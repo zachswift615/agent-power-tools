@@ -53,6 +53,10 @@ enum Commands {
         /// Languages to index (defaults to all supported)
         #[arg(short, long)]
         languages: Vec<String>,
+
+        /// Automatically install missing indexers without prompting
+        #[arg(long)]
+        auto_install: bool,
     },
 
     /// Search for patterns in the AST using tree-sitter queries
@@ -209,8 +213,8 @@ async fn main() -> Result<()> {
 
     // Execute command
     match cli.command {
-        Commands::Index { path, force, languages } => {
-            commands::index::run(path, force, languages, &cli.format).await?
+        Commands::Index { path, force, languages, auto_install } => {
+            commands::index::run(path, force, languages, auto_install, &cli.format).await?
         }
         Commands::SearchAst {
             pattern,

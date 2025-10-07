@@ -1,6 +1,5 @@
-// Placeholder for indexers module
-// Will be implemented with SCIP support
+pub mod scip_indexer;
+pub mod scip_query_simple;
 
-pub struct Indexer {
-    // TODO: Implement SCIP indexer
-}
+pub use scip_indexer::ScipIndexer;
+pub use scip_query_simple::ScipQuery;
