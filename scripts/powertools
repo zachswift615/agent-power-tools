@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Power Tools CLI wrapper for Claude Code
+# This script provides a bridge between Claude Code and the powertools binary
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+BINARY_PATH="$PROJECT_ROOT/powertools-cli/target/release/powertools"
+
+# Check if binary exists
+if [ ! -f "$BINARY_PATH" ]; then
+    echo "Error: powertools binary not found at $BINARY_PATH" >&2
+    echo "Please build the project first with:" >&2
+    echo "  cd $PROJECT_ROOT/powertools-cli && cargo build --release" >&2
+    exit 1
+fi
+
+# Execute the binary with all arguments
+exec "$BINARY_PATH" "$@"

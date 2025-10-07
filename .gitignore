@@ -1,0 +1,31 @@
+# Rust build artifacts
+/target/
+**/target/
+**/*.rs.bk
+*.pdb
+
+# Workshop data (local context - personal notes/decisions)
+.workshop/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Debug files
+*.dSYM/
+Cargo.lock
+
+# Backup files
+*.bak
+*.tmp
+
+# Log files
+*.log
+
+# Environment files
+.env
+.env.local

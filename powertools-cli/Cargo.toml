@@ -1,0 +1,86 @@
+[package]
+name = "powertools"
+version = "0.1.0"
+edition = "2021"
+authors = ["Agent Power Tools Team"]
+description = "Code indexing and navigation tools for AI agents"
+repository = "https://github.com/yourusername/agent-powertools"
+license = "MIT"
+
+[[bin]]
+name = "powertools"
+path = "src/main.rs"
+
+[dependencies]
+# CLI argument parsing
+clap = { version = "4.5", features = ["derive", "cargo"] }
+clap_complete = "4.5"
+
+# Tree-sitter for AST parsing
+tree-sitter = "0.23"
+tree-sitter-rust = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-go = "0.23"
+tree-sitter-java = "0.23"
+tree-sitter-cpp = "0.23"
+
+# Async runtime
+tokio = { version = "1.40", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# File system operations
+walkdir = "2.5"
+ignore = "0.4"  # Respects .gitignore
+glob = "0.3"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Progress bars for long operations
+indicatif = "0.17"
+
+# Path handling
+pathdiff = "0.2"
+
+# SCIP support (to be added)
+prost = "0.13"
+prost-types = "0.13"
+
+# LSP support
+lsp-types = "0.97"
+lsp-server = "0.7"
+
+# Parallel processing
+rayon = "1.10"
+
+# Configuration
+config = "0.14"
+directories = "5.0"
+
+[build-dependencies]
+prost-build = "0.13"
+
+[dev-dependencies]
+tempfile = "3.10"
+pretty_assertions = "1.4"
+criterion = "0.5"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+opt-level = 3
+
+[profile.dev]
+opt-level = 0
+debug = true
