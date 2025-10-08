@@ -7,13 +7,13 @@ use crate::indexers::ScipIndexer;
 pub async fn run(
     path: Option<PathBuf>,
     _force: bool,
-    _languages: Vec<String>,
+    languages: Vec<String>,
     auto_install: bool,
     _format: &crate::OutputFormat,
 ) -> Result<()> {
     let index_path = path.unwrap_or_else(|| PathBuf::from("."));
 
-    println!("Building SCIP index for: {}", index_path.display());
+    println!("Building SCIP indexes for: {}", index_path.display());
 
     let spinner = ProgressBar::new_spinner();
     spinner.set_style(
@@ -21,21 +21,23 @@ pub async fn run(
             .template("{spinner:.green} {msg}")
             .unwrap()
     );
-    spinner.set_message("Detecting project type and running indexer...");
+    spinner.set_message("Detecting project languages and running indexers...");
     spinner.enable_steady_tick(std::time::Duration::from_millis(100));
 
     let start = Instant::now();
 
-    // Create SCIP indexer and generate index
+    // Create SCIP indexer and generate indexes for all detected languages
     let mut indexer = ScipIndexer::new(index_path.clone());
     indexer.set_auto_install(auto_install);
 
-    match indexer.generate_index() {
-        Ok(output_path) => {
+    match indexer.generate_indexes(languages) {
+        Ok(output_paths) => {
             spinner.finish_with_message("Indexing complete!");
             let elapsed = start.elapsed();
-            println!("✓ Index built in {:?}", elapsed);
-            println!("✓ Index saved to: {}", output_path.display());
+            println!("✓ Indexes built in {:?}", elapsed);
+            for path in output_paths {
+                println!("✓ Index saved to: {}", path.display());
+            }
             Ok(())
         }
         Err(e) => {
@@ -43,7 +45,7 @@ pub async fn run(
             eprintln!("Error: {}", e);
             eprintln!("\nMake sure the appropriate indexer is installed:");
             eprintln!("  TypeScript/JavaScript: npm install -g @sourcegraph/scip-typescript");
-            eprintln!("  Python: pip install scip-python");
+            eprintln!("  Python: npm install -g @sourcegraph/scip-python");
             eprintln!("  Rust: rustup component add rust-analyzer");
             Err(e)
         }

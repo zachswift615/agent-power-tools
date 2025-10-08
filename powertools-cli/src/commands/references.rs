@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::path::PathBuf;
 use crate::core::output::OutputWriter;
-use crate::indexers::{ScipIndexer, ScipQuery};
+use crate::indexers::ScipQuery;
 
 pub async fn run(
     symbol: String,
@@ -13,12 +13,8 @@ pub async fn run(
 
     println!("Finding references for: {}", symbol);
 
-    // Read SCIP index
-    let indexer = ScipIndexer::new(project_root.clone());
-    let index = indexer.read_index()?;
-
-    // Query for references
-    let query = ScipQuery::new(index, project_root);
+    // Load all SCIP indexes
+    let query = ScipQuery::from_project(project_root)?;
     let references = query.find_references(&symbol, include_declarations)?;
 
     if references.is_empty() {
