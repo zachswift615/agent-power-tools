@@ -143,6 +143,29 @@ cd powertools-cli
 cargo test
 ```
 
+### Release Process
+
+We use an automated release script to streamline version bumping and tagging:
+
+**Interactive mode** (prompts for major/minor/patch):
+```bash
+./scripts/release.sh
+```
+
+**Explicit version**:
+```bash
+./scripts/release.sh 1.2.3
+```
+
+The script will:
+1. Update version in `Cargo.toml`
+2. Commit the version bump
+3. Push to main
+4. Create and push the git tag
+5. Trigger GitHub Actions to build and release binaries
+
+See [scripts/README.md](scripts/README.md) for detailed documentation.
+
 ### Adding New Languages
 
 1. Add tree-sitter grammar dependency to `Cargo.toml`
