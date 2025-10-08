@@ -47,6 +47,7 @@ pub fn parse_location(location_str: &str) -> Result<Location> {
 }
 
 /// Format a location for display
+#[allow(dead_code)]
 pub fn format_location(location: &Location) -> String {
     format!(
         "{}:{}:{}",

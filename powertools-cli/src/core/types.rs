@@ -136,6 +136,7 @@ pub struct IndexStats {
     pub index_size_bytes: u64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DependencyInfo {
     pub source: PathBuf,

@@ -1,6 +1,7 @@
 use thiserror::Error;
 use std::path::PathBuf;
 
+#[allow(dead_code)]
 #[derive(Error, Debug)]
 pub enum PowerToolsError {
     #[error("File not found: {0}")]

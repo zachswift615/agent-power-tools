@@ -200,6 +200,7 @@ impl TreeSitterAnalyzer {
 }
 
 pub struct AnalyzedFile {
+    #[allow(dead_code)]
     pub path: std::path::PathBuf,
     pub content: String,
     pub tree: tree_sitter::Tree,

@@ -86,8 +86,10 @@ impl PatternMatcher {
 }
 
 /// Common query patterns for different languages
+#[allow(dead_code)]
 pub struct QueryPatterns;
 
+#[allow(dead_code)]
 impl QueryPatterns {
     pub fn function_by_name(name: &str, language: Language) -> String {
         match language {

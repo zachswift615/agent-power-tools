@@ -11,6 +11,7 @@ pub struct ScipIndexer {
 }
 
 impl ScipIndexer {
+    #[allow(dead_code)]
     pub fn new(project_root: PathBuf) -> Self {
         Self {
             project_root,
@@ -77,6 +78,7 @@ impl ScipIndexer {
     }
 
     /// Legacy method for backward compatibility - indexes first detected language
+    #[allow(dead_code)]
     pub fn generate_index(&self) -> Result<PathBuf> {
         let paths = self.generate_indexes(Vec::new())?;
         paths.into_iter().next()
@@ -84,6 +86,7 @@ impl ScipIndexer {
     }
 
     /// Read existing SCIP index from disk (legacy method - prefer ScipQuery::from_project)
+    #[allow(dead_code)]
     pub fn read_index(&self) -> Result<Index> {
         // Try legacy path first
         let index_path = self.project_root.join("index.scip");
@@ -336,6 +339,7 @@ impl ScipIndexer {
         self.project_root.join(filename)
     }
 
+    #[allow(dead_code)]
     fn get_all_index_paths(&self) -> Vec<PathBuf> {
         vec![
             self.project_root.join("index.typescript.scip"),

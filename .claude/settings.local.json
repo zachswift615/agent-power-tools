@@ -59,7 +59,9 @@
       "Bash(~/.cargo/bin/rust-analyzer --version)",
       "Read(//Users/zswift/.config/**)",
       "Read(//Users/zswift/homebrew-powertools/**)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Read(//tmp/**)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

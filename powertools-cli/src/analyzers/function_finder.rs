@@ -24,6 +24,7 @@ impl FunctionFinder {
             .collect())
     }
 
+    #[allow(dead_code)]
     pub fn find_by_name(&mut self, file_path: &Path, name: &str) -> Result<Option<Symbol>> {
         let functions = self.analyzer.find_functions(file_path)?;
 
