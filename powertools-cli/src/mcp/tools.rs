@@ -112,6 +112,7 @@ pub struct ProjectStatsParams {
 
     /// Show detailed breakdown
     #[serde(default)]
+    #[allow(dead_code)]
     pub detailed: bool,
 }
 
@@ -254,15 +255,17 @@ impl PowertoolsService {
         Parameters(params): Parameters<ListFunctionsParams>,
     ) -> Result<CallToolResult, McpError> {
         let path = params.path.map(PathBuf::from);
-        let format = OutputFormat::Json;
 
-        match commands::functions::run(path, params.include_private, &format).await {
-            Ok(_) => Ok(CallToolResult::success(vec![Content::text(
-                serde_json::json!({
-                    "success": true
-                })
-                .to_string(),
-            )])),
+        match commands::functions::find_functions(path, params.include_private).await {
+            Ok(functions) => {
+                let result = serde_json::json!({
+                    "count": functions.len(),
+                    "functions": functions
+                });
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string())
+                )]))
+            },
             Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "Failed to list functions: {}",
                 e
@@ -277,15 +280,17 @@ impl PowertoolsService {
         Parameters(params): Parameters<ListClassesParams>,
     ) -> Result<CallToolResult, McpError> {
         let path = params.path.map(PathBuf::from);
-        let format = OutputFormat::Json;
 
-        match commands::classes::run(path, params.include_nested, &format).await {
-            Ok(_) => Ok(CallToolResult::success(vec![Content::text(
-                serde_json::json!({
-                    "success": true
-                })
-                .to_string(),
-            )])),
+        match commands::classes::find_classes(path, params.include_nested).await {
+            Ok(classes) => {
+                let result = serde_json::json!({
+                    "count": classes.len(),
+                    "classes": classes
+                });
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string())
+                )]))
+            },
             Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "Failed to list classes: {}",
                 e
@@ -300,15 +305,15 @@ impl PowertoolsService {
         Parameters(params): Parameters<ProjectStatsParams>,
     ) -> Result<CallToolResult, McpError> {
         let path = params.path.map(PathBuf::from);
-        let format = OutputFormat::Json;
 
-        match commands::stats::run(path, params.detailed, &format).await {
-            Ok(_) => Ok(CallToolResult::success(vec![Content::text(
-                serde_json::json!({
-                    "success": true
-                })
-                .to_string(),
-            )])),
+        match commands::stats::get_stats(path).await {
+            Ok(stats) => {
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&stats).unwrap_or_else(|_|
+                        serde_json::to_string(&stats).unwrap_or_else(|_| "{}".to_string())
+                    )
+                )]))
+            },
             Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "Failed to get project stats: {}",
                 e

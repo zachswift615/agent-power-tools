@@ -5,14 +5,12 @@ use rayon::prelude::*;
 use crate::core::{output::OutputWriter, Language, Symbol};
 use crate::analyzers::FunctionFinder;
 
-pub async fn run(
+/// Find functions and return them (for MCP/API use)
+pub async fn find_functions(
     path: Option<PathBuf>,
     include_private: bool,
-    format: &crate::OutputFormat,
-) -> Result<()> {
+) -> Result<Vec<Symbol>> {
     let search_path = path.unwrap_or_else(|| PathBuf::from("."));
-    let output = OutputWriter::new(format);
-
     let mut all_functions = Vec::new();
 
     if search_path.is_file() {
@@ -37,6 +35,17 @@ pub async fn run(
             all_functions.extend(functions);
         }
     }
+
+    Ok(all_functions)
+}
+
+pub async fn run(
+    path: Option<PathBuf>,
+    include_private: bool,
+    format: &crate::OutputFormat,
+) -> Result<()> {
+    let all_functions = find_functions(path, include_private).await?;
+    let output = OutputWriter::new(format);
 
     if all_functions.is_empty() {
         println!("No functions found");

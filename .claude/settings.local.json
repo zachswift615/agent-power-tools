@@ -61,13 +61,15 @@
       "Read(//Users/zswift/homebrew-powertools/**)",
       "Bash(find:*)",
       "Read(//tmp/**)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "mcp__powertools__project_stats",
+      "mcp__powertools__list_functions"
     ],
     "deny": [],
     "ask": []
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "powertools"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }

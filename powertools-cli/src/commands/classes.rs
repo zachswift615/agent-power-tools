@@ -5,14 +5,12 @@ use rayon::prelude::*;
 use crate::core::{output::OutputWriter, Language, Symbol};
 use crate::analyzers::ClassFinder;
 
-pub async fn run(
+/// Find classes and return them (for MCP/API use)
+pub async fn find_classes(
     path: Option<PathBuf>,
     include_nested: bool,
-    format: &crate::OutputFormat,
-) -> Result<()> {
+) -> Result<Vec<Symbol>> {
     let search_path = path.unwrap_or_else(|| PathBuf::from("."));
-    let output = OutputWriter::new(format);
-
     let mut all_classes = Vec::new();
 
     if search_path.is_file() {
@@ -37,6 +35,17 @@ pub async fn run(
             all_classes.extend(classes);
         }
     }
+
+    Ok(all_classes)
+}
+
+pub async fn run(
+    path: Option<PathBuf>,
+    include_nested: bool,
+    format: &crate::OutputFormat,
+) -> Result<()> {
+    let all_classes = find_classes(path, include_nested).await?;
+    let output = OutputWriter::new(format);
 
     if all_classes.is_empty() {
         println!("No classes/structs found");
