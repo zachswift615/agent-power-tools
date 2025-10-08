@@ -6,14 +6,12 @@ use crate::indexers::{ScipIndexer, ScipQuery};
 pub async fn run(
     symbol: String,
     include_declarations: bool,
+    project_root: PathBuf,
     format: &crate::OutputFormat,
 ) -> Result<()> {
     let output = OutputWriter::new(format);
 
     println!("Finding references for: {}", symbol);
-
-    // Get project root (assume current directory for now)
-    let project_root = PathBuf::from(".");
 
     // Read SCIP index
     let indexer = ScipIndexer::new(project_root.clone());

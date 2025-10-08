@@ -232,13 +232,13 @@ async fn main() -> Result<()> {
             .await?
         }
         Commands::Definition { location } => {
-            commands::definition::run(location, &cli.format).await?
+            commands::definition::run(location, project_root.clone(), &cli.format).await?
         }
         Commands::References {
             symbol,
             include_declarations,
         } => {
-            commands::references::run(symbol, include_declarations, &cli.format).await?
+            commands::references::run(symbol, include_declarations, project_root.clone(), &cli.format).await?
         }
         Commands::Functions { path, include_private } => {
             commands::functions::run(path, include_private, &cli.format).await?

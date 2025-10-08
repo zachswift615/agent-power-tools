@@ -54,6 +54,7 @@ pathdiff = "0.2"
 
 # SCIP support
 scip = "0.3"
+protobuf = "=3.2.0"
 
 # LSP support
 lsp-types = "0.97"

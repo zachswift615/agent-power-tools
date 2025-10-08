@@ -45,10 +45,15 @@ impl ScipIndexer {
             ));
         }
 
-        // TODO: Implement actual SCIP index reading using protobuf
-        // For now, return an empty index as a placeholder
-        // This will be enhanced once we test with actual SCIP files
-        Ok(Index::new())
+        // Read the protobuf file
+        use protobuf::Message;
+        let bytes = std::fs::read(&index_path)
+            .context("Failed to read SCIP index file")?;
+
+        let index = Index::parse_from_bytes(&bytes)
+            .context("Failed to parse SCIP index")?;
+
+        Ok(index)
     }
 
     fn detect_project_type(&self) -> Result<ProjectType> {

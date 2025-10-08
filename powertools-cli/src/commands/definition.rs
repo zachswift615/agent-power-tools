@@ -5,15 +5,13 @@ use crate::indexers::{ScipIndexer, ScipQuery};
 
 pub async fn run(
     location: String,
+    project_root: PathBuf,
     format: &crate::OutputFormat,
 ) -> Result<()> {
     let output = OutputWriter::new(format);
     let loc = parse_location(&location)?;
 
     println!("Finding definition for: {}", location);
-
-    // Get project root (assume current directory for now)
-    let project_root = PathBuf::from(".");
 
     // Read SCIP index
     let indexer = ScipIndexer::new(project_root.clone());
