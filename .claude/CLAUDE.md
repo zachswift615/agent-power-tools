@@ -7,6 +7,33 @@ This project has a powerful code indexing system available via the `powertools` 
 The powertools binary is located at: `./powertools-cli/target/release/powertools`
 
 ### Available Commands:
+
+#### Semantic Navigation (SCIP-based)
+```bash
+# Index a project (auto-detects TypeScript, JavaScript, Python, Rust)
+./powertools-cli/target/release/powertools index --auto-install
+
+# Index only specific languages
+./powertools-cli/target/release/powertools index --languages typescript python
+
+# Go to definition (returns JSON with file path, line, column)
+./powertools-cli/target/release/powertools definition src/file.ts:10:5 --format json -p /path/to/project
+
+# Find all references to a symbol
+./powertools-cli/target/release/powertools references myFunction --format json -p /path/to/project
+
+# Include declarations in references
+./powertools-cli/target/release/powertools references myFunction --include-declarations --format json
+```
+
+**When to use:**
+- Use `index` when starting work on a new project or when files have changed significantly
+- Use `definition` when you need to find where a function/variable is defined
+- Use `references` when you need to find all usages of a symbol
+
+**Output:** All commands support `--format json` which returns structured data perfect for parsing.
+
+#### Tree-sitter Pattern Matching
 ```bash
 # Search for AST patterns using tree-sitter queries
 ./powertools-cli/target/release/powertools search-ast "(function_item) @func" -p src/
@@ -30,6 +57,14 @@ The powertools binary is located at: `./powertools-cli/target/release/powertools
 - Python functions: `(function_definition) @func`
 - Find async functions: `(async_function) @func`
 - Find classes: `(class_declaration) @class`
+
+### Supported Languages:
+- **TypeScript**: Full semantic navigation via scip-typescript
+- **JavaScript**: Full semantic navigation via scip-typescript (requires tsconfig.json with `allowJs: true`)
+- **Python**: Full semantic navigation via scip-python
+- **Rust**: Full semantic navigation via rust-analyzer
+
+**Multi-language projects:** Powertools automatically detects and indexes all languages in a project. For example, a project with both TypeScript and Python will generate both `index.typescript.scip` and `index.python.scip`, and queries will search across both.
 
 ### Output Formats:
 Use `--format json` for structured data that's easy to parse.
