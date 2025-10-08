@@ -6,7 +6,7 @@ use crate::core::{output::OutputWriter, Language, IndexStats};
 
 pub async fn run(
     path: Option<PathBuf>,
-    detailed: bool,
+    _detailed: bool,
     format: &crate::OutputFormat,
 ) -> Result<()> {
     let search_path = path.unwrap_or_else(|| PathBuf::from("."));

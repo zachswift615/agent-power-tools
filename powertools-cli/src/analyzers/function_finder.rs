@@ -1,6 +1,6 @@
 use anyhow::Result;
 use std::path::Path;
-use crate::core::{Symbol, SymbolKind, Location};
+use crate::core::{Symbol, SymbolKind};
 use crate::analyzers::{TreeSitterAnalyzer, FunctionInfo};
 
 pub struct FunctionFinder {
