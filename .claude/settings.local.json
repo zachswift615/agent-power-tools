@@ -57,7 +57,8 @@
       "WebFetch(domain:docs.rs)",
       "WebFetch(domain:redandgreen.co.uk)",
       "Bash(~/.cargo/bin/rust-analyzer --version)",
-      "Read(//Users/zswift/.config/**)"
+      "Read(//Users/zswift/.config/**)",
+      "Read(//Users/zswift/homebrew-powertools/**)"
     ],
     "deny": [],
     "ask": []
