@@ -1,6 +1,6 @@
 [package]
 name = "powertools"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Agent Power Tools Team"]
 description = "Code indexing and navigation tools for AI agents"
