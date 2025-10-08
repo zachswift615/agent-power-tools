@@ -95,13 +95,11 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "Update ${{ env.FORMULA_NAME }} to v${VERSION}
-
-Automated update with SHA256 checksums from release.
-
-ARM64:  ${{ steps.checksums.outputs.arm64_sha }}
-x86_64: ${{ steps.checksums.outputs.x86_64_sha }}
-Linux:  ${{ steps.checksums.outputs.linux_sha }}"
+            git commit -m "Update ${{ env.FORMULA_NAME }} to v${VERSION}" \
+                       -m "Automated update with SHA256 checksums from release." \
+                       -m "ARM64:  ${{ steps.checksums.outputs.arm64_sha }}" \
+                       -m "x86_64: ${{ steps.checksums.outputs.x86_64_sha }}" \
+                       -m "Linux:  ${{ steps.checksums.outputs.linux_sha }}"
 
             git push
             echo "✅ Formula updated successfully!"
