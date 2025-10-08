@@ -62,6 +62,14 @@ pub struct FindReferencesParams {
     /// Project root directory (defaults to current directory)
     #[serde(default)]
     pub project_root: Option<String>,
+
+    /// Maximum number of results to return (default: 100)
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+
+    /// Number of results to skip (default: 0)
+    #[serde(default)]
+    pub offset: usize,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -80,6 +88,14 @@ pub struct SearchAstParams {
     /// Maximum number of results
     #[serde(default = "default_max_results")]
     pub max_results: usize,
+
+    /// Maximum number of results to return (default: 100)
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+
+    /// Number of results to skip (default: 0)
+    #[serde(default)]
+    pub offset: usize,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -91,6 +107,14 @@ pub struct ListFunctionsParams {
     /// Include private functions
     #[serde(default)]
     pub include_private: bool,
+
+    /// Maximum number of results to return (default: 100)
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+
+    /// Number of results to skip (default: 0)
+    #[serde(default)]
+    pub offset: usize,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -102,6 +126,14 @@ pub struct ListClassesParams {
     /// Include nested classes
     #[serde(default)]
     pub include_nested: bool,
+
+    /// Maximum number of results to return (default: 100)
+    #[serde(default = "default_limit")]
+    pub limit: usize,
+
+    /// Number of results to skip (default: 0)
+    #[serde(default)]
+    pub offset: usize,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -122,6 +154,10 @@ fn default_true() -> bool {
 
 fn default_max_results() -> usize {
     50
+}
+
+fn default_limit() -> usize {
+    100
 }
 
 // Tool implementations
@@ -168,15 +204,16 @@ impl PowertoolsService {
             .project_root
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."));
-        let format = OutputFormat::Json;
 
-        match commands::definition::run(params.location, project_root, &format).await {
-            Ok(_) => Ok(CallToolResult::success(vec![Content::text(
-                serde_json::json!({
-                    "success": true
-                })
-                .to_string(),
-            )])),
+        match commands::definition::find_definition(params.location, project_root).await {
+            Ok(location) => {
+                let result = serde_json::json!({
+                    "location": location
+                });
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string())
+                )]))
+            },
             Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "Failed to find definition: {}",
                 e
@@ -194,22 +231,34 @@ impl PowertoolsService {
             .project_root
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."));
-        let format = OutputFormat::Json;
 
-        match commands::references::run(
+        match commands::references::find_references(
             params.symbol,
-            params.include_declarations,
             project_root,
-            &format,
+            params.include_declarations,
         )
         .await
         {
-            Ok(_) => Ok(CallToolResult::success(vec![Content::text(
-                serde_json::json!({
-                    "success": true
-                })
-                .to_string(),
-            )])),
+            Ok(references) => {
+                let total = references.len();
+                let paginated: Vec<_> = references
+                    .into_iter()
+                    .skip(params.offset)
+                    .take(params.limit)
+                    .collect();
+                let has_more = params.offset + paginated.len() < total;
+
+                let result = serde_json::json!({
+                    "count": total,
+                    "limit": params.limit,
+                    "offset": params.offset,
+                    "has_more": has_more,
+                    "references": paginated
+                });
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string())
+                )]))
+            },
             Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "Failed to find references: {}",
                 e
@@ -224,23 +273,38 @@ impl PowertoolsService {
         Parameters(params): Parameters<SearchAstParams>,
     ) -> Result<CallToolResult, McpError> {
         let path = params.path.map(PathBuf::from);
-        let format = OutputFormat::Json;
 
-        match commands::search_ast::run(
+        // Ensure max_results is large enough for pagination
+        let effective_max_results = params.max_results.max(params.offset + params.limit);
+
+        match commands::search_ast::search_patterns(
             params.pattern,
             path,
             params.extensions,
-            params.max_results,
-            &format,
+            effective_max_results,
         )
         .await
         {
-            Ok(_) => Ok(CallToolResult::success(vec![Content::text(
-                serde_json::json!({
-                    "success": true
-                })
-                .to_string(),
-            )])),
+            Ok(results) => {
+                let total = results.len();
+                let paginated: Vec<_> = results
+                    .into_iter()
+                    .skip(params.offset)
+                    .take(params.limit)
+                    .collect();
+                let has_more = params.offset + paginated.len() < total;
+
+                let result = serde_json::json!({
+                    "count": total,
+                    "limit": params.limit,
+                    "offset": params.offset,
+                    "has_more": has_more,
+                    "results": paginated
+                });
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string())
+                )]))
+            },
             Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "Failed to search AST: {}",
                 e
@@ -258,9 +322,20 @@ impl PowertoolsService {
 
         match commands::functions::find_functions(path, params.include_private).await {
             Ok(functions) => {
+                let total = functions.len();
+                let paginated: Vec<_> = functions
+                    .into_iter()
+                    .skip(params.offset)
+                    .take(params.limit)
+                    .collect();
+                let has_more = params.offset + paginated.len() < total;
+
                 let result = serde_json::json!({
-                    "count": functions.len(),
-                    "functions": functions
+                    "count": total,
+                    "limit": params.limit,
+                    "offset": params.offset,
+                    "has_more": has_more,
+                    "functions": paginated
                 });
                 Ok(CallToolResult::success(vec![Content::text(
                     serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string())
@@ -283,9 +358,20 @@ impl PowertoolsService {
 
         match commands::classes::find_classes(path, params.include_nested).await {
             Ok(classes) => {
+                let total = classes.len();
+                let paginated: Vec<_> = classes
+                    .into_iter()
+                    .skip(params.offset)
+                    .take(params.limit)
+                    .collect();
+                let has_more = params.offset + paginated.len() < total;
+
                 let result = serde_json::json!({
-                    "count": classes.len(),
-                    "classes": classes
+                    "count": total,
+                    "limit": params.limit,
+                    "offset": params.offset,
+                    "has_more": has_more,
+                    "classes": paginated
                 });
                 Ok(CallToolResult::success(vec![Content::text(
                     serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string())
