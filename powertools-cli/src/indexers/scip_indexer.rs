@@ -143,7 +143,7 @@ impl ScipIndexer {
         println!("Indexing Python project...");
 
         // Check if scip-python is available
-        if !self.check_indexer_installed("scip-python", &["--help"]) {
+        if !self.check_indexer_installed("npx", &["@sourcegraph/scip-python", "--help"]) {
             println!("\n⚠️  scip-python is not installed.");
 
             let should_install = if self.auto_install {
@@ -151,7 +151,7 @@ impl ScipIndexer {
                 true
             } else {
                 println!("Would you like to install it? (y/N)");
-                println!("Command: pip install scip-python");
+                println!("Command: npm install -g @sourcegraph/scip-python");
                 print!("> ");
                 io::stdout().flush()?;
 
@@ -162,8 +162,8 @@ impl ScipIndexer {
 
             if should_install {
                 println!("Installing scip-python...");
-                let status = Command::new("pip")
-                    .args(&["install", "scip-python"])
+                let status = Command::new("npm")
+                    .args(&["install", "-g", "@sourcegraph/scip-python"])
                     .status()
                     .context("Failed to install scip-python")?;
 
@@ -177,9 +177,8 @@ impl ScipIndexer {
         }
 
         // Run scip-python indexer
-        let status = Command::new("scip-python")
-            .arg("index")
-            .arg(".")
+        let status = Command::new("npx")
+            .args(&["@sourcegraph/scip-python", "index", "."])
             .current_dir(&self.project_root)
             .status()
             .context("Failed to run scip-python")?;
