@@ -26,7 +26,7 @@ You need a GitHub Personal Access Token (PAT) that can push to the `homebrew-pow
 2. Click "Generate new token" → "Generate new token (classic)"
 
 3. Configure the token:
-   - **Note**: `Homebrew Formula Updater for agent-powertools`
+   - **Note**: `Homebrew Formula Updater for agent-power-tools`
    - **Expiration**: 90 days (or No expiration if you prefer)
    - **Scopes**: Select these:
      - ✅ `repo` (Full control of private repositories)
@@ -36,9 +36,9 @@ You need a GitHub Personal Access Token (PAT) that can push to the `homebrew-pow
 
 5. **Copy the token immediately** (you won't see it again!)
 
-### Step 2: Add Token to agent-powertools Repository
+### Step 2: Add Token to agent-power-tools Repository
 
-1. Go to your `agent-powertools` repository on GitHub
+1. Go to your `agent-power-tools` repository on GitHub
 
 2. Click Settings → Secrets and variables → Actions
 
@@ -54,7 +54,7 @@ You need a GitHub Personal Access Token (PAT) that can push to the `homebrew-pow
 Now when you create a release, both workflows will run:
 
 ```bash
-cd /path/to/agent-powertools
+cd /path/to/agent-power-tools
 
 # Create and push tag
 git tag v0.1.0
@@ -62,8 +62,8 @@ git push origin v0.1.0
 ```
 
 You can watch the workflows run at:
-- Release workflow: https://github.com/zachswift615/agent-powertools/actions/workflows/release.yml
-- Homebrew update: https://github.com/zachswift615/agent-powertools/actions/workflows/update-homebrew.yml
+- Release workflow: https://github.com/zachswift615/agent-power-tools/actions/workflows/release.yml
+- Homebrew update: https://github.com/zachswift615/agent-power-tools/actions/workflows/update-homebrew.yml
 
 ### Step 4: Verify the Update
 
@@ -107,7 +107,7 @@ If checksums don't match after installation:
 - Manually verify checksums match:
 
 ```bash
-curl -sL https://github.com/zachswift615/agent-powertools/releases/download/v0.1.0/powertools-macos-arm64.tar.gz | shasum -a 256
+curl -sL https://github.com/zachswift615/agent-power-tools/releases/download/v0.1.0/powertools-macos-arm64.tar.gz | shasum -a 256
 ```
 
 ## Manual Override
@@ -118,7 +118,7 @@ If automation fails, you can manually update the formula:
 cd ~/homebrew-powertools
 
 # Get checksums from release page
-curl -sL https://github.com/zachswift615/agent-powertools/releases/download/v0.1.0/powertools-macos-arm64.tar.gz.sha256
+curl -sL https://github.com/zachswift615/agent-power-tools/releases/download/v0.1.0/powertools-macos-arm64.tar.gz.sha256
 
 # Edit Formula/powertools.rb with real values
 vim Formula/powertools.rb

@@ -2,9 +2,9 @@
 set -e
 
 # Powertools installation script
-# Usage: curl -fsSL https://raw.githubusercontent.com/zachswift615/agent-powertools/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/zachswift615/agent-power-tools/main/install.sh | sh
 
-REPO="zachswift615/agent-powertools"
+REPO="zachswift615/agent-power-tools"
 BINARY_NAME="powertools"
 INSTALL_DIR="${HOME}/.local/bin"
 

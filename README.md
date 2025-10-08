@@ -22,7 +22,7 @@ A powerful code indexing and navigation system designed specifically for AI agen
 ## Architecture
 
 ```
-agent-powertools/
+agent-power-tools/
 ├── powertools-cli/          # Rust CLI implementation
 │   ├── src/
 │   │   ├── analyzers/       # Tree-sitter based analysis
@@ -54,8 +54,8 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 2. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/agent-powertools.git
-cd agent-powertools
+git clone https://github.com/yourusername/agent-power-tools.git
+cd agent-power-tools
 ```
 
 3. Build the project:

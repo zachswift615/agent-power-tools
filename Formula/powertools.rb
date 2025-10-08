@@ -1,22 +1,22 @@
 class Powertools < Formula
   desc "Code indexing and navigation tools for AI agents"
-  homepage "https://github.com/zachswift615/agent-powertools"
+  homepage "https://github.com/zachswift615/agent-power-tools"
   version "0.1.0"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/zachswift615/agent-powertools/releases/download/v#{version}/powertools-macos-arm64.tar.gz"
+      url "https://github.com/zachswift615/agent-power-tools/releases/download/v#{version}/powertools-macos-arm64.tar.gz"
       sha256 "REPLACE_WITH_ARM64_SHA256"
     else
-      url "https://github.com/zachswift615/agent-powertools/releases/download/v#{version}/powertools-macos-x86_64.tar.gz"
+      url "https://github.com/zachswift615/agent-power-tools/releases/download/v#{version}/powertools-macos-x86_64.tar.gz"
       sha256 "REPLACE_WITH_X86_64_SHA256"
     end
   end
 
   on_linux do
     if Hardware::CPU.intel?
-      url "https://github.com/zachswift615/agent-powertools/releases/download/v#{version}/powertools-linux-x86_64.tar.gz"
+      url "https://github.com/zachswift615/agent-power-tools/releases/download/v#{version}/powertools-linux-x86_64.tar.gz"
       sha256 "REPLACE_WITH_LINUX_SHA256"
     end
   end
@@ -41,7 +41,7 @@ class Powertools < Formula
         }
       }
 
-      For more information, see: https://github.com/zachswift615/agent-powertools
+      For more information, see: https://github.com/zachswift615/agent-power-tools
     EOS
   end
 

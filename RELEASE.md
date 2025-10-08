@@ -36,9 +36,9 @@ After the release is created:
 ```bash
 # The checksums are automatically uploaded as .sha256 files
 # Download them from the release page or use:
-curl -sL https://github.com/YOUR_USERNAME/agent-powertools/releases/download/v0.1.0/powertools-macos-arm64.tar.gz.sha256
-curl -sL https://github.com/YOUR_USERNAME/agent-powertools/releases/download/v0.1.0/powertools-macos-x86_64.tar.gz.sha256
-curl -sL https://github.com/YOUR_USERNAME/agent-powertools/releases/download/v0.1.0/powertools-linux-x86_64.tar.gz.sha256
+curl -sL https://github.com/YOUR_USERNAME/agent-power-tools/releases/download/v0.1.0/powertools-macos-arm64.tar.gz.sha256
+curl -sL https://github.com/YOUR_USERNAME/agent-power-tools/releases/download/v0.1.0/powertools-macos-x86_64.tar.gz.sha256
+curl -sL https://github.com/YOUR_USERNAME/agent-power-tools/releases/download/v0.1.0/powertools-linux-x86_64.tar.gz.sha256
 ```
 
 2. Update `Formula/powertools.rb` with the actual SHA256 values
@@ -62,7 +62,7 @@ For Homebrew installation to work, you need to create a separate "tap" repositor
 ```bash
 # In the homebrew-powertools repo
 mkdir Formula
-cp /path/to/agent-powertools/Formula/powertools.rb Formula/
+cp /path/to/agent-power-tools/Formula/powertools.rb Formula/
 git add Formula/powertools.rb
 git commit -m "Add powertools formula"
 git push
@@ -81,14 +81,14 @@ Test each installation method:
 
 ```bash
 # Install script
-curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/agent-powertools/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/agent-power-tools/main/install.sh | sh
 
 # Homebrew
 brew tap YOUR_USERNAME/powertools
 brew install powertools
 
 # Direct download
-wget https://github.com/YOUR_USERNAME/agent-powertools/releases/download/v0.1.0/powertools-macos-arm64.tar.gz
+wget https://github.com/YOUR_USERNAME/agent-power-tools/releases/download/v0.1.0/powertools-macos-arm64.tar.gz
 tar xzf powertools-macos-arm64.tar.gz
 ./powertools --version
 ```
