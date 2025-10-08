@@ -1,7 +1,6 @@
 use crate::core::types::*;
 use anyhow::Result;
 use serde::Serialize;
-use std::io::Write;
 
 #[derive(Clone, Debug)]
 pub enum OutputFormat {
