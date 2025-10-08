@@ -202,6 +202,11 @@ enum Commands {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    // Check if running as MCP server
+    if cli.mcp_server {
+        return mcp::run_mcp_server().await;
+    }
+
     // Initialize logging
     if cli.verbose {
         tracing_subscriber::fmt()
@@ -216,8 +221,11 @@ async fn main() -> Result<()> {
     // Set project root
     let project_root = cli.project.unwrap_or_else(|| PathBuf::from("."));
 
+    // Get the command or error if none provided
+    let command = cli.command.ok_or_else(|| anyhow::anyhow!("No command specified. Use --help to see available commands."))?;
+
     // Execute command
-    match cli.command {
+    match command {
         Commands::Index { path, force, languages, auto_install } => {
             commands::index::run(path, force, languages, auto_install, &cli.format).await?
         }

@@ -6,6 +6,39 @@ This project has a powerful code indexing system available via the `powertools` 
 
 The powertools binary is located at: `./powertools-cli/target/release/powertools`
 
+### MCP Server Mode
+
+Powertools can run as an MCP (Model Context Protocol) server, making all commands available as first-class tools in Claude Code:
+
+```bash
+# Run as MCP server (communicates via stdio)
+./powertools-cli/target/release/powertools --mcp-server
+```
+
+**Claude Code Integration:**
+To enable MCP integration, add this to your `~/.config/claude/mcp_settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "powertools": {
+      "command": "/absolute/path/to/powertools-cli/target/release/powertools",
+      "args": ["--mcp-server"],
+      "description": "Semantic code navigation and analysis tools"
+    }
+  }
+}
+```
+
+After configuring, restart Claude Code and the following tools will be available:
+- `index_project` - Index a project for semantic navigation
+- `goto_definition` - Find where a symbol is defined
+- `find_references` - Find all references to a symbol
+- `search_ast` - Search for code patterns using tree-sitter queries
+- `list_functions` - List all functions in a file or directory
+- `list_classes` - List all classes, structs, or interfaces
+- `project_stats` - Get codebase statistics
+
 ### Available Commands:
 
 #### Semantic Navigation (SCIP-based)

@@ -49,7 +49,15 @@
       "Bash(git add:*)",
       "Bash(curl:*)",
       "Bash(~/.cargo/bin/cargo build)",
-      "Bash(~/.cargo/bin/cargo doc --no-deps --open -p scip)"
+      "Bash(~/.cargo/bin/cargo doc --no-deps --open -p scip)",
+      "Read(//Users/zswift/swordsweeper/alloy-crm/**)",
+      "Read(//Users/zswift/.cargo/registry/src/**)",
+      "Bash(cat:*)",
+      "WebFetch(domain:www.shuttle.dev)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:redandgreen.co.uk)",
+      "Bash(~/.cargo/bin/rust-analyzer --version)",
+      "Read(//Users/zswift/.config/**)"
     ],
     "deny": [],
     "ask": []

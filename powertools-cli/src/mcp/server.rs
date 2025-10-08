@@ -1,33 +1,24 @@
 use anyhow::Result;
-use rmcp::{Server, ServerInfo, StdioTransport};
+use rmcp::ServiceExt;
 use tracing::info;
 
-use super::tools;
+use super::tools::PowertoolsService;
 
 /// Run the MCP server using stdio transport
 pub async fn run_mcp_server() -> Result<()> {
     info!("Starting powertools MCP server");
 
-    // Create server info
-    let server_info = ServerInfo {
-        name: "powertools".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
+    // Create the service
+    let service = PowertoolsService::new();
 
-    // Create server with our tools
-    let mut server = Server::new(server_info);
-
-    // Register all tools
-    for tool in tools::get_tools() {
-        server.add_tool(tool);
-    }
-
-    // Create stdio transport
-    let transport = StdioTransport::new();
-
-    // Run the server
+    // Start the server with stdio transport
     info!("MCP server ready, listening on stdio");
-    server.run(transport).await?;
+    let peer = service
+        .serve((tokio::io::stdin(), tokio::io::stdout()))
+        .await?;
+
+    // Wait for the service to complete
+    peer.waiting().await?;
 
     Ok(())
 }

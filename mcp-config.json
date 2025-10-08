@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "powertools": {
+      "command": "/Users/zswift/swordsweeper/agent-powertools/target/release/powertools",
+      "args": ["--mcp-server"],
+      "description": "Semantic code navigation and analysis tools"
+    }
+  }
+}

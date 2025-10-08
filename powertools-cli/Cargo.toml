@@ -57,8 +57,8 @@ scip = "0.3"
 protobuf = "=3.2.0"
 
 # MCP support
-rmcp = "0.1"
-rmcp-macros = "0.1"
+rmcp = { version = "0.8", features = ["server", "macros"] }
+schemars = "1.0"
 
 # LSP support
 lsp-types = "0.97"
