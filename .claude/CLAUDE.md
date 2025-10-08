@@ -16,28 +16,37 @@ Powertools can run as an MCP (Model Context Protocol) server, making all command
 ```
 
 **Claude Code Integration:**
-To enable MCP integration, add this to your `~/.config/claude/mcp_settings.json`:
+To enable MCP integration, create a `.mcp.json` file at your project root:
 
 ```json
 {
   "mcpServers": {
     "powertools": {
-      "command": "/absolute/path/to/powertools-cli/target/release/powertools",
-      "args": ["--mcp-server"],
-      "description": "Semantic code navigation and analysis tools"
+      "command": "powertools",
+      "args": ["--mcp-server"]
     }
   }
 }
 ```
 
-After configuring, restart Claude Code and the following tools will be available:
-- `index_project` - Index a project for semantic navigation
+**Important:** The file must be named `.mcp.json` (not `mcp_settings.json`) and placed at the project root. This file can be committed to git for team collaboration.
+
+After creating the file and restarting Claude Code, the following tools will be available:
+- `index_project` - Index a project for semantic navigation (auto-installs indexers)
 - `goto_definition` - Find where a symbol is defined
-- `find_references` - Find all references to a symbol
-- `search_ast` - Search for code patterns using tree-sitter queries
-- `list_functions` - List all functions in a file or directory
-- `list_classes` - List all classes, structs, or interfaces
+- `find_references` - Find all references to a symbol (with pagination)
+- `search_ast` - Search for code patterns using tree-sitter queries (with pagination)
+- `list_functions` - List all functions in a file or directory (with pagination)
+- `list_classes` - List all classes, structs, or interfaces (with pagination)
 - `project_stats` - Get codebase statistics
+
+**Pagination Support (v0.1.3+):**
+All MCP tools that return lists support pagination to prevent token limit errors:
+- `limit` parameter: Maximum results to return (default: 100)
+- `offset` parameter: Number of results to skip (default: 0)
+- Response includes: `count` (total), `has_more` (boolean), and result data
+
+Example: On a project with 1,438 functions, `list_functions` with `limit=100` returns only 100 results instead of exceeding token limits.
 
 ### Available Commands:
 
