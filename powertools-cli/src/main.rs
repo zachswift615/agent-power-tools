@@ -6,6 +6,7 @@ mod analyzers;
 mod commands;
 mod core;
 mod indexers;
+mod mcp;
 
 #[derive(Parser)]
 #[command(name = "powertools")]
@@ -16,6 +17,10 @@ mod indexers;
                   pattern searching, and code analysis capabilities optimized for AI agents."
 )]
 struct Cli {
+    /// Run as MCP (Model Context Protocol) server
+    #[arg(long)]
+    mcp_server: bool,
+
     /// Enable verbose output
     #[arg(short, long, global = true)]
     verbose: bool,
@@ -29,7 +34,7 @@ struct Cli {
     project: Option<PathBuf>,
 
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Clone, Debug, clap::ValueEnum)]

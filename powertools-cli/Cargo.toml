@@ -56,6 +56,10 @@ pathdiff = "0.2"
 scip = "0.3"
 protobuf = "=3.2.0"
 
+# MCP support
+rmcp = "0.1"
+rmcp-macros = "0.1"
+
 # LSP support
 lsp-types = "0.97"
 lsp-server = "0.7"
