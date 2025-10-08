@@ -319,4 +319,30 @@ impl PowertoolsService {
 
 // Server handler implementation
 #[rmcp::tool_handler]
-impl ServerHandler for PowertoolsService {}
+impl ServerHandler for PowertoolsService {
+    fn get_info(&self) -> rmcp::model::ServerInfo {
+        use rmcp::model::{Implementation, ServerCapabilities, ToolsCapability, ProtocolVersion};
+
+        rmcp::model::ServerInfo {
+            protocol_version: ProtocolVersion::default(),
+            capabilities: ServerCapabilities {
+                tools: Some(ToolsCapability {
+                    list_changed: None,
+                }),
+                ..Default::default()
+            },
+            server_info: Implementation {
+                name: "powertools".to_string(),
+                title: Some("Powertools MCP Server".to_string()),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                icons: None,
+                website_url: Some("https://github.com/zachswift615/agent-power-tools".to_string()),
+            },
+            instructions: Some(
+                "Powertools provides semantic code navigation and analysis. \
+                 Use index_project first to build the code index, then use other tools \
+                 for navigation and analysis.".to_string()
+            ),
+        }
+    }
+}
