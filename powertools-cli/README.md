@@ -15,7 +15,7 @@ Powerful code indexing and navigation tools optimized for AI agents. Provides se
 ### Option 1: Install Script (Recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/agent-powertools/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/zachswift615/agent-powertools/main/install.sh | sh
 ```
 
 This automatically detects your platform and installs the latest version.
@@ -24,7 +24,7 @@ This automatically detects your platform and installs the latest version.
 
 ```bash
 # Add the tap
-brew tap YOUR_USERNAME/powertools https://github.com/YOUR_USERNAME/agent-powertools
+brew tap zachswift615/powertools https://github.com/zachswift615/agent-powertools
 
 # Install
 brew install powertools
@@ -32,7 +32,7 @@ brew install powertools
 
 ### Option 3: Download Binary
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/YOUR_USERNAME/agent-powertools/releases):
+Download the latest release for your platform from [GitHub Releases](https://github.com/zachswift615/agent-powertools/releases):
 
 - **macOS ARM64** (M1/M2/M3): `powertools-macos-arm64.tar.gz`
 - **macOS x86_64** (Intel): `powertools-macos-x86_64.tar.gz`
@@ -49,7 +49,7 @@ sudo mv powertools /usr/local/bin/
 Requires [Rust](https://rustup.rs/) to be installed.
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/agent-powertools.git
+git clone https://github.com/zachswift615/agent-powertools.git
 cd agent-powertools/powertools-cli
 cargo build --release
 
