@@ -11,6 +11,7 @@ pub struct ScipQuery {
 
 impl ScipQuery {
     /// Create from a single index (for backward compatibility)
+    #[allow(dead_code)]
     pub fn new(index: Index, project_root: PathBuf) -> Self {
         Self {
             indexes: vec![index],

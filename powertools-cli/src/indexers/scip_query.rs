@@ -10,6 +10,7 @@ pub struct ScipQuery {
 }
 
 impl ScipQuery {
+    #[allow(dead_code)]
     pub fn new(index: Index, project_root: PathBuf) -> Self {
         Self { index, project_root }
     }
