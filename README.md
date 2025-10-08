@@ -1,23 +1,46 @@
 # Agent Power Tools 🛠️
 
-A powerful code indexing and navigation system designed specifically for AI agents like Claude Code. Built on industry-standard protocols (SCIP, LSP) and leveraging Tree-sitter for fast AST analysis.
+A powerful code indexing and navigation system designed specifically for AI agents like Claude Code. Built on industry-standard protocols (SCIP) and leveraging Tree-sitter for fast AST analysis, with full MCP (Model Context Protocol) integration.
+
+## Quick Start
+
+```bash
+# Install via Homebrew
+brew tap zachswift615/powertools
+brew install powertools
+
+# Run as MCP server
+powertools --mcp-server
+
+# Or use directly
+powertools index --auto-install      # Index your project
+powertools functions --format json   # List all functions
+powertools definition src/app.ts:42:10  # Go to definition
+```
+
+For Claude Code integration, add a `.mcp.json` file to your project root (see [MCP Server section](#mcp-server-recommended-for-claude-code)).
 
 ## Features
 
-### ✅ Implemented (Tree-sitter based)
+### ✅ Semantic Code Navigation (SCIP-based)
+- **Go to Definition** - Jump to where symbols are defined
+- **Find References** - Find all usages of a symbol across the codebase
+- **Multi-language Support** - TypeScript, JavaScript, Python, and Rust
+- **Auto-indexing** - Automatically installs and runs language-specific indexers
+- **Pagination** - Handle large result sets efficiently (default 100, customizable)
+
+### ✅ AST Pattern Matching (Tree-sitter based)
 - **Pattern Search** - Search for code patterns using Tree-sitter queries
 - **Function Finder** - List all functions in a project with signatures
 - **Class Finder** - Find classes, structs, interfaces across codebases
 - **Statistics** - Get project statistics and language breakdown
 - **Multiple Output Formats** - JSON, Text, and Markdown output
 
-### 🚧 In Progress (SCIP/LSP based)
-- **Go to Definition** - Jump to where symbols are defined
-- **Find References** - Find all usages of a symbol
-- **Find Implementations** - Locate implementations of interfaces/traits
-- **Find Callers** - Discover where functions are called
-- **Type Information** - Get type info for expressions
-- **Dependency Analysis** - Understand module dependencies
+### ✅ MCP Server Integration
+- **Claude Code Native** - All tools available as first-class MCP tools
+- **Automatic Discovery** - Tools appear in Claude Code after configuration
+- **JSON Responses** - Structured data perfect for AI consumption
+- **Project-level Config** - `.mcp.json` can be committed for team collaboration
 
 ## Architecture
 
@@ -45,7 +68,14 @@ agent-power-tools/
 
 ## Installation
 
-### Prerequisites
+### Option 1: Homebrew (Recommended for macOS/Linux)
+
+```bash
+brew tap zachswift615/powertools
+brew install powertools
+```
+
+### Option 2: From Source
 
 1. Install Rust:
 ```bash
@@ -54,7 +84,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 2. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/agent-power-tools.git
+git clone https://github.com/zachswift615/agent-power-tools.git
 cd agent-power-tools
 ```
 
@@ -64,25 +94,61 @@ cd powertools-cli
 cargo build --release
 ```
 
+The binary will be available at `powertools-cli/target/release/powertools`
+
 ## Usage
+
+### MCP Server (Recommended for Claude Code)
+
+The best way to use powertools with Claude Code is through MCP integration:
+
+1. Create a `.mcp.json` file in your project root:
+
+```json
+{
+  "mcpServers": {
+    "powertools": {
+      "command": "powertools",
+      "args": ["--mcp-server"]
+    }
+  }
+}
+```
+
+2. Restart Claude Code - the tools will appear automatically!
+
+**Available MCP Tools:**
+- `index_project` - Index your project for semantic navigation
+- `goto_definition` - Find where a symbol is defined
+- `find_references` - Find all references to a symbol (with pagination)
+- `search_ast` - Search using tree-sitter patterns (with pagination)
+- `list_functions` - List all functions (with pagination)
+- `list_classes` - List all classes/structs (with pagination)
+- `project_stats` - Get codebase statistics
+
+All tools support pagination with `limit` (default 100) and `offset` (default 0) parameters.
 
 ### Command Line Interface
 
 ```bash
+# Index your project (auto-installs language indexers)
+powertools index --auto-install
+
+# Semantic navigation
+powertools definition src/file.ts:10:5 --format json
+powertools references myFunction --format json
+
 # Search for patterns in AST
-powertools search-ast "function_declaration" --path src/
+powertools search-ast "(function_declaration) @func" --path src/
 
 # Find all functions
-powertools functions --include-private
+powertools functions --include-private --format json
 
 # Find all classes/structs
-powertools classes --include-nested
+powertools classes --include-nested --format json
 
 # Get project statistics
-powertools stats --detailed
-
-# Build/update index (for semantic features)
-powertools index
+powertools stats
 ```
 
 ### Tree-sitter Query Examples
@@ -102,37 +168,37 @@ Find all class constructors:
 powertools search-ast "(constructor) @ctor"
 ```
 
-### Claude Code Integration
-
-The `.claude/commands/` directory contains wrapper scripts that Claude can invoke:
-
-```bash
-# Claude can run these commands:
-.claude/commands/search-ast.sh "pattern"
-.claude/commands/find-functions.sh
-.claude/commands/find-classes.sh
-.claude/commands/go-to-definition.sh "file:line:column"
-```
-
-These scripts output JSON that Claude can parse and use for code navigation.
-
 ## Language Support
 
-| Language | Tree-sitter | SCIP | LSP |
-|----------|------------|------|-----|
-| Rust | ✅ | 🚧 | 🚧 |
-| TypeScript | ✅ | 🚧 | 🚧 |
-| JavaScript | ✅ | 🚧 | 🚧 |
-| Python | ✅ | 🚧 | 🚧 |
-| Go | ✅ | 🚧 | 🚧 |
-| Java | ✅ | 🚧 | 🚧 |
-| C/C++ | ✅ | 🚧 | 🚧 |
+| Language | Tree-sitter | SCIP (Semantic) | Auto-Install |
+|----------|------------|-----------------|--------------|
+| TypeScript | ✅ | ✅ | ✅ (`@sourcegraph/scip-typescript`) |
+| JavaScript | ✅ | ✅ | ✅ (`@sourcegraph/scip-typescript`) |
+| Python | ✅ | ✅ | ✅ (`@sourcegraph/scip-python`) |
+| Rust | ✅ | ✅ | ✅ (`rust-analyzer`) |
+| Go | ✅ | ⏳ | - |
+| Java | ✅ | ⏳ | - |
+| C/C++ | ✅ | ⏳ | - |
+
+**Legend:**
+- ✅ Fully supported
+- ⏳ Planned
+- Tree-sitter: Pattern matching, function/class listing
+- SCIP: Go to definition, find references
+- Auto-Install: Automatically installs required indexers
 
 ## Performance
 
 - **Tree-sitter queries**: ~1-10ms per file
 - **Pattern search**: <1s for 10k files
 - **Function/class listing**: <500ms for large projects
+- **SCIP indexing**: ~10-30s for medium projects (auto-cached)
+- **Pagination**: Default 100 results prevents token limit errors
+- **Multi-language**: Indexes all detected languages in parallel
+
+**Tested on:**
+- alloy-crm (1,975 files, Python/JavaScript): Successfully indexed and navigated
+- agent-powertools (Rust): <5s full index
 
 ## Development
 
@@ -183,27 +249,31 @@ Commands are modular - add new ones by:
 ## Roadmap
 
 ### Phase 1: AST Analysis ✅
-- Basic tree-sitter integration
-- Pattern searching
-- Function/class finding
+- ✅ Basic tree-sitter integration
+- ✅ Pattern searching
+- ✅ Function/class finding
+- ✅ Multi-language support
 
-### Phase 2: Semantic Indexing (Current)
-- SCIP index generation
-- Go to definition
-- Find references
-- Cross-file navigation
+### Phase 2: Semantic Indexing ✅
+- ✅ SCIP index generation (TypeScript, JavaScript, Python, Rust)
+- ✅ Go to definition
+- ✅ Find references
+- ✅ Cross-file navigation
+- ✅ MCP server integration
+- ✅ Pagination for large result sets
 
-### Phase 3: Advanced Features
-- Type inference
-- Call graphs
-- Dependency graphs
-- Refactoring support
+### Phase 3: Advanced Features (Current)
+- ⏳ Additional language support (Go, Java, C/C++)
+- ⏳ Find implementations
+- ⏳ Type inference
+- ⏳ Call graphs
+- ⏳ Dependency graphs
 
 ### Phase 4: AI-Specific Features
-- Context extraction for prompts
-- Intelligent code summarization
-- Change impact analysis
-- Test coverage mapping
+- ⏳ Context extraction for prompts
+- ⏳ Intelligent code summarization
+- ⏳ Change impact analysis
+- ⏳ Test coverage mapping
 
 ## Contributing
 
