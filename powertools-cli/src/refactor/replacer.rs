@@ -9,6 +9,7 @@ use super::BatchResult;
 
 /// Mode for performing replacements
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum ReplacementMode {
     /// Preview changes without applying
     Preview,

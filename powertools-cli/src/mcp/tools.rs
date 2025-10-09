@@ -524,7 +524,7 @@ impl PowertoolsService {
         &self,
         Parameters(params): Parameters<BatchReplaceParams>,
     ) -> Result<CallToolResult, McpError> {
-        use crate::refactor::{BatchReplacer, generate_preview};
+        use crate::refactor::BatchReplacer;
 
         let path = params.path.map(PathBuf::from).unwrap_or_else(|| self.project_root.clone());
 

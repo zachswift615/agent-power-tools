@@ -62,7 +62,6 @@ impl FileWatcher {
         self.reindex_tx = reindex_tx.clone();
 
         let project_root = self.project_root.clone();
-        let is_running = self.is_running.clone();
 
         // Create the debounced file watcher
         let mut debouncer = new_debouncer(
@@ -163,6 +162,7 @@ impl FileWatcher {
     }
 
     /// Get watcher status information
+    #[allow(dead_code)]
     pub fn status(&self) -> WatcherStatus {
         WatcherStatus {
             is_running: self.is_running(),
@@ -172,6 +172,7 @@ impl FileWatcher {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct WatcherStatus {
     pub is_running: bool,
     pub project_root: PathBuf,

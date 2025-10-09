@@ -1,10 +1,13 @@
 mod preview;
 mod replacer;
 
-pub use preview::{PreviewChange, PreviewDiff, generate_preview};
-pub use replacer::{BatchReplacer, ReplacementMode};
+pub use preview::generate_preview;
+#[allow(unused_imports)]
+pub use preview::{PreviewChange, PreviewDiff};
+pub use replacer::BatchReplacer;
+#[allow(unused_imports)]
+pub use replacer::ReplacementMode;
 
-use anyhow::Result;
 use std::path::PathBuf;
 
 /// Result of a batch operation

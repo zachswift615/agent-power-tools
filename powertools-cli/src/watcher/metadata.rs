@@ -71,6 +71,7 @@ impl IndexMetadata {
     }
 
     /// Load metadata from a file
+    #[allow(dead_code)]
     pub fn load(index_path: &Path) -> Result<Self> {
         let meta_path = Self::meta_path(index_path);
         let json = std::fs::read_to_string(&meta_path)
@@ -81,6 +82,7 @@ impl IndexMetadata {
     }
 
     /// Check if the index is stale compared to current project state
+    #[allow(dead_code)]
     pub fn is_stale(&self, project_root: &Path) -> Result<bool> {
         let current = Self::generate(project_root)?;
         Ok(self.files_hash != current.files_hash)
@@ -92,12 +94,14 @@ impl IndexMetadata {
     }
 
     /// Check if metadata exists for an index
+    #[allow(dead_code)]
     pub fn exists(index_path: &Path) -> bool {
         Self::meta_path(index_path).exists()
     }
 }
 
 /// Check if any index exists and is stale
+#[allow(dead_code)]
 pub fn check_staleness(project_root: &Path) -> Result<Option<String>> {
     let index_files = [
         "index.typescript.scip",
