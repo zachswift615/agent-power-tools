@@ -1,9 +1,24 @@
 # Semantic Refactoring Tools - v0.4.0 Implementation
 
-**Status:** 🟡 In Progress - Foundation Phase
+**Status:** 🟡 In Progress - Week 1 Foundation (Phase 1.1 Complete ✅)
+**Current Phase:** Phase 1.2 - Enhanced Multi-File Preview System
 **Target Release:** Q1 2026
 **Timeline:** 2-3 weeks
 **Started:** 2025-10-09
+**Last Updated:** 2025-10-09
+
+## 📊 Current Progress
+
+```
+Week 1: Foundation                    [████████░░░░░░░░░░░░] 33% Complete
+├─ Phase 1.1: Import Analyzers        [████████████████████] ✅ DONE
+├─ Phase 1.2: Multi-File Preview      [░░░░░░░░░░░░░░░░░░░░] NEXT
+└─ Phase 1.3: Transaction System      [░░░░░░░░░░░░░░░░░░░░] Pending
+
+Overall v0.4.0 Progress:              [███░░░░░░░░░░░░░░░░░] 15% Complete
+```
+
+**Latest Milestone:** Import/export analyzers complete for TypeScript, Python, Rust, C++ (~1,240 lines)
 
 ---
 
@@ -450,29 +465,40 @@ src/mcp/
 
 ## Progress Tracking
 
-### ✅ Completed (2025-10-09)
+### ✅ Completed (Updated 2025-10-09)
 
+**Planning & Setup:**
 - [x] Research open-source parser libraries
 - [x] Create implementation plan (SEMANTIC_REFACTORING_PLAN.md)
 - [x] Library analysis and trade-off documentation (LIBRARY_ANALYSIS.md)
-- [x] Add parser dependencies to Cargo.toml
+- [x] Add parser dependencies to Cargo.toml (syn, rustpython-parser, quote, prettyplease, similar)
 - [x] Resolve dependency conflicts (chose pragmatic stack)
-- [x] Document plan in repository
+- [x] Document plan in repository (docs/SEMANTIC_REFACTORING_V0.4.0.md)
 
-### 🟡 In Progress
+**Week 1, Phase 1.1 - Import/Export Analyzers:** ✅ **COMPLETE**
+- [x] Import/export analyzer (TypeScript/JavaScript) - tree-sitter based, ~280 lines
+- [x] Import/export analyzer (Python) - rustpython-parser based, ~180 lines
+- [x] Import/export analyzer (Rust) - syn based, ~240 lines
+- [x] Import/export analyzer (C++) - tree-sitter based, ~150 lines
+- [x] Unified ImportAnalyzer trait and API - ~200 lines
+- [x] Comprehensive test coverage for all analyzers
+- [x] Language detection helper (get_analyzer_for_file)
 
-- [ ] Week 1: Foundation
-  - [ ] Import/export analyzer (TypeScript)
-  - [ ] Import/export analyzer (Python)
-  - [ ] Import/export analyzer (Rust)
-  - [ ] Enhanced multi-file preview system
-  - [ ] Transactional refactoring system
+**Total Code:** ~1,240 lines across 5 files in `src/refactor/imports/`
+
+### 🟡 In Progress - Week 1: Foundation
+
+**Current Phase:**
+- [ ] Phase 1.2: Enhanced multi-file preview system (NEXT)
+- [ ] Phase 1.3: Transactional refactoring system
+
+**Estimated Completion:** Week 1 - 2-3 more days
 
 ### ⏳ Pending
 
-- [ ] Week 2: Core Refactorings
-- [ ] Week 3: Advanced Refactorings
-- [ ] Week 4: Polish & Integration
+- [ ] Week 2: Core Refactorings (Rename Symbol, Inline Variable, Move Symbol)
+- [ ] Week 3: Advanced Refactorings (Extract Method, Inline Function, Change Signature)
+- [ ] Week 4: Polish & Integration (MCP tools, CLI commands, documentation, testing)
 
 ---
 
