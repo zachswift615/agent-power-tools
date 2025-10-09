@@ -70,7 +70,8 @@
       "Bash(~/.cargo/bin/cargo fix --bin \"powertools\" --allow-dirty)",
       "WebFetch(domain:crates.io)",
       "Bash(mkdir:*)",
-      "Bash(~/.cargo/bin/cargo test --manifest-path=/Users/zachswift/projects/agent-power-tools/powertools-cli/Cargo.toml --lib refactor::transaction)"
+      "Bash(~/.cargo/bin/cargo test --manifest-path=/Users/zachswift/projects/agent-power-tools/powertools-cli/Cargo.toml --lib refactor::transaction)",
+      "Bash(~/.cargo/bin/cargo build --release --manifest-path=/Users/zachswift/projects/agent-power-tools/powertools-cli/Cargo.toml)"
     ],
     "deny": [],
     "ask": []

@@ -1,5 +1,6 @@
 pub mod imports;
 mod preview;
+mod rename;
 mod replacer;
 mod transaction;
 
@@ -7,6 +8,7 @@ pub use preview::generate_preview;
 pub use preview::{
     ChangeType, ImportChange, PreviewChange, PreviewDiff, RefactoringSummary, RiskLevel,
 };
+pub use rename::{RenameOptions, RenameResult, SymbolRenamer};
 pub use replacer::BatchReplacer;
 #[allow(unused_imports)]
 pub use replacer::ReplacementMode;

@@ -1,7 +1,7 @@
 # Semantic Refactoring Tools - v0.4.0 Implementation
 
-**Status:** 🎉 Week 1 Foundation COMPLETE ✅
-**Current Phase:** Week 2 - Core Refactorings
+**Status:** 🟡 In Progress - Week 2 Core Refactorings (Phase 2.1 Complete ✅)
+**Current Phase:** Week 2 Phase 2.2 - Inline Variable
 **Target Release:** Q1 2026
 **Timeline:** 2-3 weeks
 **Started:** 2025-10-09
@@ -15,10 +15,15 @@ Week 1: Foundation                    [█████████████�
 ├─ Phase 1.2: Multi-File Preview      [████████████████████] ✅ DONE
 └─ Phase 1.3: Transaction System      [████████████████████] ✅ DONE
 
-Overall v0.4.0 Progress:              [██████░░░░░░░░░░░░░░] 30% Complete
+Week 2: Core Refactorings             [██████░░░░░░░░░░░░░░] 33% Complete
+├─ Phase 2.1: Rename Symbol           [████████████████████] ✅ DONE
+├─ Phase 2.2: Inline Variable         [░░░░░░░░░░░░░░░░░░░░] NEXT
+└─ Phase 2.3: Move Symbol             [░░░░░░░░░░░░░░░░░░░░] Pending
+
+Overall v0.4.0 Progress:              [████████░░░░░░░░░░░░] 40% Complete
 ```
 
-**Latest Milestone:** Week 1 Foundation complete! Import analyzers, enhanced preview system, and atomic transactions (~1,800 lines)
+**Latest Milestone:** Rename symbol refactoring complete! SCIP-based symbol resolution with full import update support (~480 lines)
 
 ---
 
@@ -519,6 +524,26 @@ All foundation systems are in place:
 - ✅ Atomic transaction system with rollback
 
 **Completed:** 2025-10-09 (same day!)
+
+**Week 2, Phase 2.1 - Rename Symbol Refactoring:** ✅ **COMPLETE**
+- [x] SymbolRenamer struct with SCIP integration
+- [x] Symbol extraction from source location
+- [x] find_definition and find_references integration
+- [x] Multi-file reference replacement with position tracking
+- [x] Import/export statement updates (all languages)
+- [x] Transaction-based atomic refactoring
+- [x] Preview mode with RefactoringSummary integration
+- [x] CLI command: `powertools rename-symbol`
+- [x] Full test coverage
+
+**Code:** ~480 lines in `src/refactor/rename.rs` + `src/commands/rename_symbol.rs`
+
+### 🟡 In Progress - Week 2: Core Refactorings
+
+**Current Phase:**
+- [x] Phase 2.1: Rename Symbol ✅ DONE
+- [ ] Phase 2.2: Inline Variable (NEXT)
+- [ ] Phase 2.3: Move Symbol
 
 ### ⏳ Pending
 

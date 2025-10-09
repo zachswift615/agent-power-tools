@@ -7,3 +7,4 @@ pub mod classes;
 pub mod stats;
 pub mod watch;
 pub mod batch_replace;
+pub mod rename_symbol;

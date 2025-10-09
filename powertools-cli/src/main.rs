@@ -227,6 +227,33 @@ enum Commands {
         preview: bool,
     },
 
+    /// Rename a symbol across the codebase
+    RenameSymbol {
+        /// File path where the symbol is located
+        file: PathBuf,
+
+        /// Line number (1-indexed)
+        line: usize,
+
+        /// Column number (1-indexed)
+        column: usize,
+
+        /// New name for the symbol
+        new_name: String,
+
+        /// Project root (defaults to current directory)
+        #[arg(short, long)]
+        project: Option<PathBuf>,
+
+        /// Preview changes without applying
+        #[arg(long)]
+        preview: bool,
+
+        /// Update imports/exports
+        #[arg(long, default_value = "true")]
+        update_imports: bool,
+    },
+
     /// Clear the index cache
     ClearCache {
         /// Confirmation flag
@@ -304,6 +331,9 @@ async fn main() -> Result<()> {
         }
         Commands::BatchReplace { pattern, replacement, files, path, preview } => {
             commands::batch_replace::run(pattern, replacement, files, path, preview, &cli.format).await?
+        }
+        Commands::RenameSymbol { file, line, column, new_name, project, preview, update_imports } => {
+            commands::rename_symbol::run(file, line, column, new_name, project, preview, update_imports, &cli.format).await?
         }
         _ => {
             eprintln!("Command not yet implemented");
