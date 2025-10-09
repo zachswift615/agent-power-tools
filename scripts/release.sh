@@ -101,10 +101,43 @@ echo -e "${BLUE}Updating version in Cargo.toml...${NC}"
 sed -i.bak "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" powertools-cli/Cargo.toml
 rm powertools-cli/Cargo.toml.bak
 
+# Update CHANGELOG.md with new version
+echo -e "${BLUE}Updating CHANGELOG.md...${NC}"
+
+# Check if CHANGELOG.md exists
+if [ ! -f "CHANGELOG.md" ]; then
+    echo -e "${RED}CHANGELOG.md not found${NC}"
+    exit 1
+fi
+
+# Extract the current release section from CHANGELOG.md
+# This gets everything between the first ## [X.Y.Z] header and the next ## header
+CHANGELOG_ENTRY=$(awk -v version="$NEW_VERSION" '
+    /^## \['"$NEW_VERSION"'\]/ { found=1; print; next }
+    found && /^## \[/ { exit }
+    found { print }
+' CHANGELOG.md)
+
+if [ -z "$CHANGELOG_ENTRY" ]; then
+    echo -e "${YELLOW}Warning: No changelog entry found for version ${NEW_VERSION}${NC}"
+    echo -e "${YELLOW}Please update CHANGELOG.md manually before releasing${NC}"
+    echo -n "Continue anyway? [y/N]: "
+    read -r changelog_confirm
+    if [[ ! $changelog_confirm =~ ^[Yy]$ ]]; then
+        echo "Release cancelled"
+        exit 0
+    fi
+else
+    echo -e "${GREEN}Found changelog entry for v${NEW_VERSION}:${NC}"
+    echo "----------------------------------------"
+    echo "$CHANGELOG_ENTRY"
+    echo "----------------------------------------"
+fi
+
 # Check if there are uncommitted changes
-if ! git diff --quiet powertools-cli/Cargo.toml; then
+if ! git diff --quiet powertools-cli/Cargo.toml CHANGELOG.md; then
     echo -e "${YELLOW}Committing version bump...${NC}"
-    git add powertools-cli/Cargo.toml
+    git add powertools-cli/Cargo.toml CHANGELOG.md
     git commit -m "chore: Bump version to v${NEW_VERSION}"
 else
     echo -e "${YELLOW}No version changes to commit${NC}"
@@ -143,9 +176,27 @@ if git ls-remote --tags origin | grep -q "refs/tags/${TAG_NAME}$"; then
     fi
 fi
 
-# Create and push tag
+# Create and push tag with changelog as message
 echo -e "${BLUE}Creating tag ${TAG_NAME}...${NC}"
-git tag "$TAG_NAME"
+
+if [ -n "$CHANGELOG_ENTRY" ]; then
+    # Create annotated tag with changelog entry as message
+    # Remove the version header line from the changelog entry for the tag message
+    TAG_MESSAGE=$(echo "$CHANGELOG_ENTRY" | tail -n +2 | sed '/^$/d')
+
+    if [ -n "$TAG_MESSAGE" ]; then
+        echo -e "${GREEN}Using changelog entry as tag message${NC}"
+        git tag -a "$TAG_NAME" -m "Release $NEW_VERSION
+
+$TAG_MESSAGE"
+    else
+        # Fallback to simple tag if changelog entry is empty
+        git tag "$TAG_NAME"
+    fi
+else
+    # No changelog entry, create simple tag
+    git tag "$TAG_NAME"
+fi
 
 echo -e "${BLUE}Pushing tag ${TAG_NAME}...${NC}"
 git push origin "$TAG_NAME"
