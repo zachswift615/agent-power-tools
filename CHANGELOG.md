@@ -5,7 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.5] - 2025-10-08
+
+### Fixed
+- **C++ Semantic Navigation**: Fixed SCIP query tools not finding C++ index files
+  - Added `index.cpp.scip` to the file lookup list in `ScipQuery::from_project()`
+  - Fixes "No SCIP indexes found" errors for C++ projects
+  - All C++ semantic tools now work: `goto_definition`, `find_references`, `list_functions`, `list_classes`
 
 ## [0.1.4] - 2025-10-08
 
@@ -139,7 +145,8 @@ We use [Semantic Versioning](https://semver.org/):
 
 Since we're pre-1.0.0, minor versions may include breaking changes.
 
-[unreleased]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.4...HEAD
+[unreleased]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.1...v0.1.2

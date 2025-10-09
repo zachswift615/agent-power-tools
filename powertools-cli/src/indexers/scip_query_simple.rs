@@ -30,6 +30,7 @@ impl ScipQuery {
             "index.javascript.scip",
             "index.python.scip",
             "index.rust.scip",
+            "index.cpp.scip",
             "index.scip", // Legacy fallback
         ] {
             let path = project_root.join(filename);
