@@ -191,6 +191,27 @@ pub struct ProjectStatsParams {
     pub detailed: bool,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct BatchReplaceParams {
+    /// Regex pattern to search for
+    pub pattern: String,
+
+    /// Replacement text (supports capture groups like $1, $2)
+    pub replacement: String,
+
+    /// File glob pattern (e.g., "*.rs", "**/*.ts")
+    #[serde(default)]
+    pub file_pattern: Option<String>,
+
+    /// Path to search in (defaults to current directory)
+    #[serde(default)]
+    pub path: Option<String>,
+
+    /// Preview changes without applying (default: true for safety)
+    #[serde(default = "default_true")]
+    pub preview: bool,
+}
+
 fn default_true() -> bool {
     true
 }
@@ -495,6 +516,66 @@ impl PowertoolsService {
         Ok(CallToolResult::success(vec![Content::text(
             serde_json::to_string_pretty(&status).unwrap_or_else(|_| status.to_string())
         )]))
+    }
+
+    /// Batch replace text across multiple files using regex
+    #[tool(description = "Replace text across multiple files using regex patterns. ALWAYS preview first (preview=true) to see changes before applying.")]
+    async fn batch_replace(
+        &self,
+        Parameters(params): Parameters<BatchReplaceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::refactor::{BatchReplacer, generate_preview};
+
+        let path = params.path.map(PathBuf::from).unwrap_or_else(|| self.project_root.clone());
+
+        let replacer = match BatchReplacer::new(
+            &params.pattern,
+            params.replacement.clone(),
+            params.file_pattern.clone(),
+            path,
+        ) {
+            Ok(r) => r,
+            Err(e) => return Ok(CallToolResult::error(vec![Content::text(format!(
+                "Invalid regex pattern: {}",
+                e
+            ))])),
+        };
+
+        if params.preview {
+            // Preview mode - show what would change
+            match replacer.preview() {
+                Ok(diffs) => {
+                    let result = serde_json::json!({
+                        "preview": true,
+                        "num_files": diffs.len(),
+                        "total_changes": diffs.iter().map(|d| d.num_changes).sum::<usize>(),
+                        "diffs": diffs,
+                    });
+                    Ok(CallToolResult::success(vec![Content::text(
+                        serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string())
+                    )]))
+                }
+                Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed to preview changes: {}",
+                    e
+                ))])),
+            }
+        } else {
+            // Apply mode - make the changes
+            match replacer.apply() {
+                Ok(result) => {
+                    Ok(CallToolResult::success(vec![Content::text(
+                        serde_json::to_string_pretty(&result).unwrap_or_else(|_|
+                            serde_json::to_string(&result).unwrap_or_else(|_| "{}".to_string())
+                        )
+                    )]))
+                }
+                Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed to apply changes: {}",
+                    e
+                ))])),
+            }
+        }
     }
 }
 

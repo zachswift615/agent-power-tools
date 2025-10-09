@@ -7,6 +7,7 @@ mod commands;
 mod core;
 mod indexers;
 mod mcp;
+mod refactor;
 mod watcher;
 
 #[derive(Parser)]
@@ -205,6 +206,27 @@ enum Commands {
         auto_install: bool,
     },
 
+    /// Batch replace text across multiple files using regex
+    BatchReplace {
+        /// Regex pattern to search for
+        pattern: String,
+
+        /// Replacement text (supports capture groups like $1, $2)
+        replacement: String,
+
+        /// File glob pattern (e.g., "*.rs", "**/*.ts")
+        #[arg(short, long)]
+        files: Option<String>,
+
+        /// Path to search in (defaults to current directory)
+        #[arg(short, long)]
+        path: Option<PathBuf>,
+
+        /// Preview changes without applying
+        #[arg(long)]
+        preview: bool,
+    },
+
     /// Clear the index cache
     ClearCache {
         /// Confirmation flag
@@ -279,6 +301,9 @@ async fn main() -> Result<()> {
         }
         Commands::Watch { path, debounce, auto_install } => {
             commands::watch::run(path, debounce, auto_install).await?
+        }
+        Commands::BatchReplace { pattern, replacement, files, path, preview } => {
+            commands::batch_replace::run(pattern, replacement, files, path, preview, &cli.format).await?
         }
         _ => {
             eprintln!("Command not yet implemented");

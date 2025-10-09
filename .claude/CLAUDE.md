@@ -47,6 +47,9 @@ After creating the file and restarting Claude Code, the following tools will be 
 - `watcher_stop` - Pause automatic re-indexing
 - `get_watcher_status` - Check if watcher is running and get project info
 
+**Batch Operations Tools (NEW in v0.3.0):**
+- `batch_replace` - Replace text across multiple files using regex patterns with preview
+
 **Important: The file watcher starts AUTOMATICALLY when the MCP server starts!** This means:
 - Indexes stay fresh as the user edits code
 - You don't need to manually re-index after file changes
@@ -57,6 +60,16 @@ After creating the file and restarting Claude Code, the following tools will be 
 - **Use `watcher_start`** after bulk operations to resume automatic indexing
 - **Use `get_watcher_status`** to check if the watcher is running or to show the user what's being monitored
 - **DO NOT** manually call `index_project` on every file change - the watcher handles this automatically!
+
+**When to use batch_replace:**
+- **ALWAYS use `preview=true` FIRST** - Never apply batch replacements without previewing!
+- **Use for repetitive edits** - Replace patterns across multiple files in one operation
+- **Supports regex** - Use capture groups like $1, $2 for complex replacements
+- **File filtering** - Use `file_pattern` param (e.g., "*.ts", "**/*.rs") to limit scope
+- **Examples:**
+  - Fix typos across codebase: `batch_replace("recieve", "receive", preview=true)`
+  - Update API URLs: `batch_replace("api\\.old\\.com", "api.new.com", file_pattern="**/*.ts", preview=true)`
+  - Add optional chaining: `batch_replace("user\\.([a-zA-Z]+)", "user?.$1", file_pattern="**/*.ts", preview=true)`
 
 **Pagination Support (v0.1.3+):**
 All MCP tools that return lists support pagination to prevent token limit errors:

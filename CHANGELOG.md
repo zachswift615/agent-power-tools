@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-10-08
+
+### Added
+- **Batch File Operations**: Replace text across multiple files with regex patterns
+  - New `batch-replace` CLI command with preview and apply modes
+  - Regex pattern matching with capture group support ($1, $2, etc.)
+  - File glob filtering (e.g., `*.ts`, `**/*.rs`) to limit scope
+  - Beautiful preview diffs showing exact changes before applying
+  - Smart ignore patterns (.git, target, node_modules, etc.)
+  - JSON output for programmatic usage
+  - New MCP tool: `batch_replace` with preview-first safety
+
+- **Refactoring Infrastructure**: Foundation for semantic refactoring tools
+  - New `src/refactor/` module with preview and replacement systems
+  - Preview system with diff formatting and change summaries
+  - Batch result tracking (files scanned, matched, modified)
+  - File traversal with ignore pattern support
+
+### Changed
+- Added `regex` dependency (v1.11) for pattern matching
+
+### Technical Details
+- Built on `regex` crate (same as ripgrep) for fast, reliable pattern matching
+- Respects .gitignore-style patterns during file traversal
+- Preview-first workflow prevents accidental mass edits
+- Thread-safe for future parallel processing
+
+### Examples
+```bash
+# Preview changes across TypeScript files
+powertools batch-replace "console\.log" "logger.debug" --files "**/*.ts" --preview
+
+# Apply typo fix across entire codebase
+powertools batch-replace "recieve" "receive" --files "**/*.md"
+
+# Use capture groups for complex replacements
+powertools batch-replace "user\.([a-zA-Z]+)" "user?.$1" --files "**/*.ts" --preview
+```
+
 ## [0.2.0] - 2025-10-08
 
 ### Added
@@ -189,7 +228,8 @@ We use [Semantic Versioning](https://semver.org/):
 
 Since we're pre-1.0.0, minor versions may include breaking changes.
 
-[unreleased]: https://github.com/zachswift615/agent-power-tools/compare/v0.2.0...HEAD
+[unreleased]: https://github.com/zachswift615/agent-power-tools/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/zachswift615/agent-power-tools/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.6...v0.2.0
 [0.1.6]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.4...v0.1.5
