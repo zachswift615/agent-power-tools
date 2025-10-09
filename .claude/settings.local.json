@@ -67,7 +67,8 @@
       "Bash(/Users/zachswift/projects/agent-power-tools/powertools-cli/target/release/powertools functions /Users/zachswift/projects/substansive_synth/SubstansiveSynth/Source/PluginProcessor.cpp --format json)",
       "Bash(/Users/zachswift/projects/agent-power-tools/powertools-cli/target/release/powertools search-ast \"(function_definition) @func\" -p /Users/zachswift/projects/substansive_synth/SubstansiveSynth/Source/PluginProcessor.cpp --format json)",
       "Bash(gh run list:*)",
-      "Bash(~/.cargo/bin/cargo fix --bin \"powertools\" --allow-dirty)"
+      "Bash(~/.cargo/bin/cargo fix --bin \"powertools\" --allow-dirty)",
+      "WebFetch(domain:crates.io)"
     ],
     "deny": [],
     "ask": []

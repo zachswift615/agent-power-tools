@@ -80,6 +80,17 @@ crossbeam-channel = "0.5"
 # Regex for batch operations
 regex = "1.11"
 
+# Rust parsing and code generation (for Rust refactoring)
+syn = { version = "2.0", features = ["full", "parsing", "extra-traits"] }
+quote = "1.0"
+prettyplease = "0.2"
+
+# Python parsing (RustPython - mature, production-ready)
+rustpython-parser = "0.4"
+
+# Better diff algorithm for previews
+similar = "2.5"
+
 [dev-dependencies]
 tempfile = "3.10"
 pretty_assertions = "1.4"

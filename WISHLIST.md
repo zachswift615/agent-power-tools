@@ -17,9 +17,9 @@ This document captures future feature ideas based on real AI agent workflow need
 
 **Why:** Currently done manually with Edit tool, which is error-prone. One missed reference breaks the code. With SCIP indexes, these could be 100% safe.
 
-**Status:** 🟡 Planned for v0.3.0
+**Status:** 🟡 Planned for v0.4.0 - **See [SEMANTIC_REFACTORING_PLAN.md](./SEMANTIC_REFACTORING_PLAN.md) for detailed implementation plan**
 **Complexity:** Medium-Hard
-**Prerequisites:** SCIP indexes, tree-sitter AST manipulation
+**Prerequisites:** ✅ SCIP indexes, ✅ tree-sitter AST manipulation
 
 ---
 
@@ -127,35 +127,49 @@ This document captures future feature ideas based on real AI agent workflow need
 
 ## Implementation Roadmap
 
-### v0.3.0 - Semantic Refactoring (Target: Q1 2026)
+### v0.3.0 - Batch File Operations ✅ **COMPLETED**
+- ✅ Regex Replace Across Files with preview
+- ✅ Preview system with diffs
+- ✅ Refactoring infrastructure foundation
 
-**Phase 1: Foundation**
-- [ ] Rename Symbol (across codebase)
+### v0.4.0 - Semantic Refactoring (Target: Q1 2026)
+
+**See [SEMANTIC_REFACTORING_PLAN.md](./SEMANTIC_REFACTORING_PLAN.md) for detailed 4-week implementation plan.**
+
+**Phase 1: Foundation (Week 1)**
 - [ ] Import/Export analyzer and updater
-- [ ] Preview/diff system for safe refactoring
+- [ ] Enhanced multi-file preview system
+- [ ] Transactional refactoring system (atomic all-or-nothing)
 
-**Phase 2: Core Refactorings**
-- [ ] Extract Method/Function
+**Phase 2: Core Refactorings (Week 2)**
+- [ ] Rename Symbol (across codebase) - **PRIORITY #1**
 - [ ] Inline Variable
-- [ ] Inline Function
 - [ ] Move Symbol
 
-**Phase 3: Batch Operations**
-- [ ] Multi-file Edit with preview
-- [ ] Regex Replace Across Files
-- [ ] Bulk File Rename
+**Phase 3: Advanced Refactorings (Week 3)**
+- [ ] Extract Method/Function - **HIGHEST VALUE**
+- [ ] Inline Function
+- [ ] Change Signature
 
-### v0.4.0 - Code Understanding (Target: Q2 2026)
+**Phase 4: Polish & Integration (Week 4)**
+- [ ] MCP tool integration for all refactorings
+- [ ] CLI commands for all operations
+- [ ] Comprehensive testing suite
+- [ ] Documentation and examples
+
+### v0.5.0 - Code Understanding (Target: Q2 2026)
 - [ ] Call Hierarchy
 - [ ] Type Hierarchy
 - [ ] Dead Code Detection
 - [ ] Dependency Graph
 - [ ] Data Flow Analysis
 
-### v0.5.0+ - Advanced Features (Future)
+### v0.6.0+ - Advanced Features (Future)
 - [ ] Test generation and execution
 - [ ] Structural code search
 - [ ] Framework-specific refactorings
+- [ ] Extract Component (React/Vue)
+- [ ] Convert Class to Hooks
 
 ---
 
