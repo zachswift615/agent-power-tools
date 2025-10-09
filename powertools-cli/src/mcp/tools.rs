@@ -6,21 +6,64 @@ use rmcp::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Mutex;
+use anyhow::Result;
 
 use crate::commands;
 use crate::OutputFormat;
+use crate::watcher::FileWatcher;
 
 /// Powertools MCP Service
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PowertoolsService {
     tool_router: ToolRouter<Self>,
+    watcher: Arc<Mutex<Option<FileWatcher>>>,
+    project_root: PathBuf,
+}
+
+impl std::fmt::Debug for PowertoolsService {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PowertoolsService")
+            .field("project_root", &self.project_root)
+            .finish()
+    }
 }
 
 impl PowertoolsService {
-    pub fn new() -> Self {
-        Self {
+    pub fn new(project_root: PathBuf) -> Result<Self> {
+        Ok(Self {
             tool_router: Self::tool_router(),
+            watcher: Arc::new(Mutex::new(None)),
+            project_root,
+        })
+    }
+
+    pub async fn start_watcher(&self, debounce: Duration, auto_install: bool) -> Result<()> {
+        let mut watcher_guard = self.watcher.lock().await;
+
+        if watcher_guard.is_some() {
+            return Ok(()); // Already started
         }
+
+        let mut watcher = FileWatcher::new(self.project_root.clone())?;
+        watcher.start(debounce, auto_install).await?;
+        *watcher_guard = Some(watcher);
+
+        Ok(())
+    }
+
+    pub async fn stop_watcher(&self) {
+        let mut watcher_guard = self.watcher.lock().await;
+        if let Some(mut watcher) = watcher_guard.take() {
+            watcher.stop();
+        }
+    }
+
+    pub async fn is_watcher_running(&self) -> bool {
+        let watcher_guard = self.watcher.lock().await;
+        watcher_guard.as_ref().map_or(false, |w| w.is_running())
     }
 }
 
@@ -405,6 +448,53 @@ impl PowertoolsService {
                 e
             ))])),
         }
+    }
+
+    /// Stop the file watcher
+    #[tool(description = "Stop the automatic file watcher and re-indexing.")]
+    async fn watcher_stop(&self) -> Result<CallToolResult, McpError> {
+        self.stop_watcher().await;
+        Ok(CallToolResult::success(vec![Content::text(
+            serde_json::json!({
+                "success": true,
+                "message": "File watcher stopped"
+            })
+            .to_string(),
+        )]))
+    }
+
+    /// Start the file watcher
+    #[tool(description = "Start the automatic file watcher and re-indexing.")]
+    async fn watcher_start(&self) -> Result<CallToolResult, McpError> {
+        match self.start_watcher(Duration::from_secs(2), true).await {
+            Ok(_) => Ok(CallToolResult::success(vec![Content::text(
+                serde_json::json!({
+                    "success": true,
+                    "message": "File watcher started"
+                })
+                .to_string(),
+            )])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                "Failed to start watcher: {}",
+                e
+            ))])),
+        }
+    }
+
+    /// Get file watcher status
+    #[tool(description = "Get the current status of the file watcher.")]
+    async fn get_watcher_status(&self) -> Result<CallToolResult, McpError> {
+        let is_running = self.is_watcher_running().await;
+
+        let status = serde_json::json!({
+            "is_running": is_running,
+            "project_root": self.project_root.display().to_string(),
+            "debounce_ms": if is_running { 2000 } else { 0 },
+        });
+
+        Ok(CallToolResult::success(vec![Content::text(
+            serde_json::to_string_pretty(&status).unwrap_or_else(|_| status.to_string())
+        )]))
     }
 }
 

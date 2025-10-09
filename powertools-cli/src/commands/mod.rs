@@ -5,3 +5,4 @@ pub mod references;
 pub mod functions;
 pub mod classes;
 pub mod stats;
+pub mod watch;

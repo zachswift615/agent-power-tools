@@ -86,6 +86,20 @@ impl ScipIndexer {
             .ok_or_else(|| anyhow!("No indexes generated"))
     }
 
+    /// Re-index a specific language
+    pub fn reindex_language(&self, language: crate::core::Language) -> Result<PathBuf> {
+        let project_type = ProjectType::from_language(language)
+            .ok_or_else(|| anyhow!("Unsupported language: {:?}", language))?;
+
+        match project_type {
+            ProjectType::TypeScript => self.index_typescript(),
+            ProjectType::JavaScript => self.index_javascript(),
+            ProjectType::Python => self.index_python(),
+            ProjectType::Rust => self.index_rust(),
+            ProjectType::CPP => self.index_cpp(),
+        }
+    }
+
     /// Read existing SCIP index from disk (legacy method - prefer ScipQuery::from_project)
     #[allow(dead_code)]
     pub fn read_index(&self) -> Result<Index> {
@@ -556,13 +570,28 @@ impl ScipIndexer {
     }
 }
 
-#[derive(Debug)]
-enum ProjectType {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectType {
     TypeScript,
     JavaScript,
     Python,
     Rust,
     CPP,
+}
+
+impl ProjectType {
+    /// Convert from core::Language to ProjectType
+    pub fn from_language(lang: crate::core::Language) -> Option<Self> {
+        match lang {
+            crate::core::Language::TypeScript => Some(ProjectType::TypeScript),
+            crate::core::Language::JavaScript => Some(ProjectType::JavaScript),
+            crate::core::Language::Python => Some(ProjectType::Python),
+            crate::core::Language::Rust => Some(ProjectType::Rust),
+            crate::core::Language::Cpp => Some(ProjectType::CPP),
+            crate::core::Language::C => Some(ProjectType::CPP),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]

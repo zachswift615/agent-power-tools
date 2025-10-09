@@ -22,10 +22,18 @@ For Claude Code integration, add a `.mcp.json` file to your project root (see [M
 
 ## Features
 
+### ✅ File Watching and Auto Re-indexing (NEW in v0.2.0)
+- **Automatic Re-indexing** - MCP server watches for file changes and re-indexes automatically
+- **Smart Debouncing** - 2-second debounce prevents spam during rapid file edits
+- **Language-Specific** - Only re-indexes the changed language (5s vs 30s on mixed projects)
+- **CLI Watch Mode** - Manual file watching with `powertools watch`
+- **MCP Control Tools** - `watcher_start`, `watcher_stop`, `get_watcher_status`
+- **Ignore Patterns** - Respects `.git/`, `target/`, `node_modules/`, etc.
+
 ### ✅ Semantic Code Navigation (SCIP-based)
 - **Go to Definition** - Jump to where symbols are defined
 - **Find References** - Find all usages of a symbol across the codebase
-- **Multi-language Support** - TypeScript, JavaScript, Python, and Rust
+- **Multi-language Support** - TypeScript, JavaScript, Python, Rust, and C++
 - **Auto-indexing** - Automatically installs and runs language-specific indexers
 - **Pagination** - Handle large result sets efficiently (default 100, customizable)
 
@@ -38,6 +46,7 @@ For Claude Code integration, add a `.mcp.json` file to your project root (see [M
 
 ### ✅ MCP Server Integration
 - **Claude Code Native** - All tools available as first-class MCP tools
+- **Auto-start Watcher** - File watcher starts automatically when MCP server starts
 - **Automatic Discovery** - Tools appear in Claude Code after configuration
 - **JSON Responses** - Structured data perfect for AI consumption
 - **Project-level Config** - `.mcp.json` can be committed for team collaboration
@@ -125,14 +134,24 @@ The best way to use powertools with Claude Code is through MCP integration:
 - `list_functions` - List all functions (with pagination)
 - `list_classes` - List all classes/structs (with pagination)
 - `project_stats` - Get codebase statistics
+- `watcher_start` - Start the file watcher (auto-starts by default)
+- `watcher_stop` - Stop the file watcher
+- `get_watcher_status` - Get watcher status and project info
 
 All tools support pagination with `limit` (default 100) and `offset` (default 0) parameters.
+
+**Note:** The file watcher starts automatically when the MCP server starts. Use `watcher_stop` to pause auto re-indexing during bulk operations, then `watcher_start` to resume.
 
 ### Command Line Interface
 
 ```bash
 # Index your project (auto-installs language indexers)
 powertools index --auto-install
+
+# Watch for file changes and auto re-index (NEW in v0.2.0)
+powertools watch                    # Watch current directory
+powertools watch --debounce 5       # Custom debounce (seconds)
+powertools watch --auto-install     # Auto-install indexers if missing
 
 # Semantic navigation
 powertools definition src/file.ts:10:5 --format json

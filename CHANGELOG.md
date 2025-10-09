@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-10-08
+
+### Added
+- **File Watching and Auto Re-indexing**: Automatic background re-indexing when source files change
+  - New `watch` CLI command for manual file watching with configurable debounce
+  - MCP server now starts file watcher automatically on startup
+  - Language-specific re-indexing: Only re-indexes the changed language (not all languages)
+  - Smart debouncing (2s default) prevents re-index spam during rapid file changes
+  - Respects ignore patterns: `.git/`, `target/`, `node_modules/`, `*.scip`, etc.
+  - New MCP tools: `watcher_start`, `watcher_stop`, `get_watcher_status`
+
+- **Index Metadata and Validation**: Track index freshness and detect staleness
+  - Metadata stored alongside each SCIP index (`.scip.meta` files)
+  - Tracks creation time, file count, and hash of source files
+  - Enables smart staleness detection to avoid unnecessary re-indexing
+
+- **Language-Specific Reindexing**: Added `reindex_language()` method to ScipIndexer
+  - Supports incremental workflows for multi-language projects
+  - Significantly faster than full re-indexing (5s vs 30s on mixed projects)
+
+### Changed
+- **MCP Server**: Now requires project root path and automatically starts file watcher
+- **ScipIndexer**: Enhanced with `ProjectType` enum and language-specific indexing methods
+
+### Technical Details
+- Added dependencies: `notify` (v7.0), `notify-debouncer-full` (v0.3), `crossbeam-channel` (v0.5)
+- New module: `src/watcher/` with filters, metadata, and FileWatcher implementation
+- File watcher uses debounced events to batch rapid changes
+- Watcher state managed with Arc<Mutex<>> for thread-safe MCP integration
+
 ## [0.1.6] - 2025-10-08
 
 ### Added
@@ -114,9 +144,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 When creating a new release:
 
 1. **Update CHANGELOG.md**:
-   - Move items from `[Unreleased]` to a new version section
-   - Add the version number and date: `## [X.Y.Z] - YYYY-MM-DD`
-   - Organize changes under categories: Added, Changed, Deprecated, Removed, Fixed, Security
+   - Add a new version section: `## [X.Y.Z] - YYYY-MM-DD`
+   - Document changes under categories: Added, Changed, Deprecated, Removed, Fixed, Security
+   - Update the version comparison links at the bottom
 
 2. **Update version in Cargo.toml**:
    ```bash
@@ -130,23 +160,24 @@ When creating a new release:
    cargo test
    ```
 
-4. **Commit and tag**:
+4. **Use the release script** (recommended):
    ```bash
-   git add CHANGELOG.md powertools-cli/Cargo.toml
-   git commit -m "chore: Release vX.Y.Z"
-   git push
-   git tag vX.Y.Z
-   git push origin vX.Y.Z
+   # From project root
+   ./scripts/release.sh
    ```
+
+   The release script will:
+   - Extract the changelog entry for the version
+   - Show you the changes for review
+   - Commit with the message "chore: Release vX.Y.Z"
+   - Create an annotated git tag with the changelog as the message
+   - Push the commit and tag to GitHub
 
 5. **GitHub Actions** will automatically:
    - Build binaries for macOS and Linux
-   - Create a GitHub release
+   - Create a GitHub release with the changelog
    - Upload release artifacts
-
-6. **Update Homebrew formula** (if applicable):
-   - Update version and SHA256 in the tap repository
-   - Test installation: `brew upgrade powertools`
+   - Update the Homebrew formula (via separate workflow)
 
 ## Versioning Strategy
 
@@ -158,7 +189,8 @@ We use [Semantic Versioning](https://semver.org/):
 
 Since we're pre-1.0.0, minor versions may include breaking changes.
 
-[unreleased]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.6...HEAD
+[unreleased]: https://github.com/zachswift615/agent-power-tools/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.6...v0.2.0
 [0.1.6]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.3...v0.1.4

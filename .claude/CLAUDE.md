@@ -32,6 +32,8 @@ To enable MCP integration, create a `.mcp.json` file at your project root:
 **Important:** The file must be named `.mcp.json` (not `mcp_settings.json`) and placed at the project root. This file can be committed to git for team collaboration.
 
 After creating the file and restarting Claude Code, the following tools will be available:
+
+**Core Navigation Tools:**
 - `index_project` - Index a project for semantic navigation (auto-installs indexers)
 - `goto_definition` - Find where a symbol is defined
 - `find_references` - Find all references to a symbol (with pagination)
@@ -39,6 +41,22 @@ After creating the file and restarting Claude Code, the following tools will be 
 - `list_functions` - List all functions in a file or directory (with pagination)
 - `list_classes` - List all classes, structs, or interfaces (with pagination)
 - `project_stats` - Get codebase statistics
+
+**File Watcher Tools (NEW in v0.2.0):**
+- `watcher_start` - Start automatic re-indexing when files change
+- `watcher_stop` - Pause automatic re-indexing
+- `get_watcher_status` - Check if watcher is running and get project info
+
+**Important: The file watcher starts AUTOMATICALLY when the MCP server starts!** This means:
+- Indexes stay fresh as the user edits code
+- You don't need to manually re-index after file changes
+- If you get "symbol not found" errors, the index might be rebuilding (wait 2-5s and retry)
+
+**When to use watcher tools:**
+- **Use `watcher_stop`** before bulk operations (e.g., mass file edits, git operations, npm install) to avoid re-index spam
+- **Use `watcher_start`** after bulk operations to resume automatic indexing
+- **Use `get_watcher_status`** to check if the watcher is running or to show the user what's being monitored
+- **DO NOT** manually call `index_project` on every file change - the watcher handles this automatically!
 
 **Pagination Support (v0.1.3+):**
 All MCP tools that return lists support pagination to prevent token limit errors:
@@ -69,9 +87,11 @@ Example: On a project with 1,438 functions, `list_functions` with `limit=100` re
 ```
 
 **When to use:**
-- Use `index` when starting work on a new project or when files have changed significantly
-- Use `definition` when you need to find where a function/variable is defined
-- Use `references` when you need to find all usages of a symbol
+- **Use `index_project`** only when: (1) Starting work on a new project for the first time, OR (2) The watcher is stopped and you need to manually rebuild
+- **DO NOT use `index_project`** repeatedly - the file watcher (v0.2.0+) keeps indexes fresh automatically!
+- **Use `goto_definition`** when you need to find where a function/variable is defined
+- **Use `find_references`** when you need to find all usages of a symbol
+- **Note:** If queries fail with "symbol not found", wait 2-5 seconds for the watcher to finish re-indexing, then retry
 
 **Output:** All commands support `--format json` which returns structured data perfect for parsing.
 

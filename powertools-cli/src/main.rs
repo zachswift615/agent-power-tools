@@ -7,6 +7,7 @@ mod commands;
 mod core;
 mod indexers;
 mod mcp;
+mod watcher;
 
 #[derive(Parser)]
 #[command(name = "powertools")]
@@ -190,6 +191,20 @@ enum Commands {
         detailed: bool,
     },
 
+    /// Watch for file changes and automatically re-index
+    Watch {
+        /// Path to watch (defaults to current directory)
+        path: Option<PathBuf>,
+
+        /// Debounce delay in seconds
+        #[arg(short, long, default_value = "2")]
+        debounce: u64,
+
+        /// Automatically install missing indexers
+        #[arg(long)]
+        auto_install: bool,
+    },
+
     /// Clear the index cache
     ClearCache {
         /// Confirmation flag
@@ -261,6 +276,9 @@ async fn main() -> Result<()> {
         }
         Commands::Stats { path, detailed } => {
             commands::stats::run(path, detailed, &cli.format).await?
+        }
+        Commands::Watch { path, debounce, auto_install } => {
+            commands::watch::run(path, debounce, auto_install).await?
         }
         _ => {
             eprintln!("Command not yet implemented");

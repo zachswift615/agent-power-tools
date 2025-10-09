@@ -1,6 +1,6 @@
 [package]
 name = "powertools"
-version = "0.1.6"
+version = "0.2.0"
 edition = "2021"
 authors = ["Agent Power Tools Team"]
 description = "Code indexing and navigation tools for AI agents"
@@ -71,6 +71,11 @@ rayon = "1.10"
 # Configuration
 config = "0.14"
 directories = "5.0"
+
+# File watching
+notify = "7.0"
+notify-debouncer-full = "0.3"
+crossbeam-channel = "0.5"
 
 [dev-dependencies]
 tempfile = "3.10"
