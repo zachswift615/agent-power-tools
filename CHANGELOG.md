@@ -5,13 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2025-10-08
+
+### Added
+- **C++ Tree-sitter Support**: Added tree-sitter queries for C++ functions and classes
+  - `list_functions` now works with C++ files (extracts function names from qualified identifiers)
+  - `list_classes` now works with C++ files (finds class and struct definitions)
+  - Custom name extraction for C++ qualified names (e.g., `ClassName::functionName`)
+
+### Fixed
+- **C++ Function/Class Finding**: Tree-sitter-based tools now properly parse C++ code
+  - Added function_definition and class_specifier/struct_specifier queries
+  - Implemented C++-specific name extraction logic for complex declarators
+
 ## [0.1.5] - 2025-10-08
 
 ### Fixed
 - **C++ Semantic Navigation**: Fixed SCIP query tools not finding C++ index files
   - Added `index.cpp.scip` to the file lookup list in `ScipQuery::from_project()`
   - Fixes "No SCIP indexes found" errors for C++ projects
-  - All C++ semantic tools now work: `goto_definition`, `find_references`, `list_functions`, `list_classes`
+  - All C++ semantic tools now work: `goto_definition`, `find_references`
 
 ## [0.1.4] - 2025-10-08
 
@@ -145,7 +158,8 @@ We use [Semantic Versioning](https://semver.org/):
 
 Since we're pre-1.0.0, minor versions may include breaking changes.
 
-[unreleased]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.5...HEAD
+[unreleased]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.2...v0.1.3

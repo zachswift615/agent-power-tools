@@ -38,6 +38,10 @@ impl ClassFinder {
                 (class_declaration name: (identifier) @name) @class
                 (interface_declaration name: (identifier) @name) @interface
             "#,
+            Language::Cpp | Language::C => r#"
+                (class_specifier name: (type_identifier) @name) @class
+                (struct_specifier name: (type_identifier) @name) @struct
+            "#,
             _ => return Ok(Vec::new()),
         };
 

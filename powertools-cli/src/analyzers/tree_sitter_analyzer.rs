@@ -102,6 +102,9 @@ impl TreeSitterAnalyzer {
                 (function_declaration name: (identifier) @name) @func
                 (method_declaration name: (field_identifier) @name) @func
             "#,
+            Language::Cpp | Language::C => r#"
+                (function_definition) @func
+            "#,
             _ => return Ok(Vec::new()),
         };
 
@@ -117,8 +120,13 @@ impl TreeSitterAnalyzer {
                 .map(|c| c.node);
 
             if let Some(func_node) = func_node {
-                let name = name_node.map(|n| analyzed.content[n.byte_range()].to_string())
-                    .unwrap_or_else(|| "<anonymous>".to_string());
+                let name = if let Some(name_node) = name_node {
+                    analyzed.content[name_node.byte_range()].to_string()
+                } else {
+                    // For C++, extract name from function_definition declarator
+                    self.extract_function_name(&func_node, &analyzed, analyzed.language)
+                        .unwrap_or_else(|| "<anonymous>".to_string())
+                };
 
                 let start = func_node.start_position();
                 functions.push(FunctionInfo {
@@ -196,6 +204,31 @@ impl TreeSitterAnalyzer {
         // Simplified return type extraction
         node.child_by_field_name("return_type")
             .map(|n| analyzed.content[n.byte_range()].to_string())
+    }
+
+    fn extract_function_name(&self, node: &Node, analyzed: &AnalyzedFile, language: Language) -> Option<String> {
+        match language {
+            Language::Cpp | Language::C => {
+                // For C++, navigate: function_definition -> declarator (function_declarator) -> declarator (identifier or qualified_identifier)
+                if let Some(declarator) = node.child_by_field_name("declarator") {
+                    // The declarator might be a function_declarator
+                    if declarator.kind() == "function_declarator" {
+                        // Look for the nested declarator which contains the function name
+                        if let Some(inner_declarator) = declarator.child_by_field_name("declarator") {
+                            // Extract the text from the identifier or qualified_identifier
+                            let name_text = analyzed.content[inner_declarator.byte_range()].to_string();
+                            // For qualified names like "ClassName::functionName", extract just the function name
+                            if let Some(last_part) = name_text.split("::").last() {
+                                return Some(last_part.trim().to_string());
+                            }
+                            return Some(name_text.trim().to_string());
+                        }
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
     }
 }
 
