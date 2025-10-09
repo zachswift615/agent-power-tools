@@ -123,34 +123,75 @@ GitHub Actions will automatically:
 
 **Monitor:** Check https://github.com/zachswift615/agent-power-tools/actions
 
-### 7. Update Homebrew Formula (If Needed)
+### 7. Update Homebrew Formula (Manual Trigger Required)
 
-For new releases, update the Homebrew tap:
+**Important:** Due to GitHub Actions security restrictions, the Homebrew formula update workflow cannot be automatically triggered by the release workflow. You must manually trigger it after each release.
+
+**Automated Update (Recommended):**
+
+After the release completes, manually trigger the update workflow:
+
+```bash
+# Trigger the Homebrew update workflow for the new release
+gh workflow run "Update Homebrew Formula" \
+  --repo zachswift615/agent-power-tools \
+  -f version_tag=vX.Y.Z
+
+# Monitor the workflow
+gh run watch --repo zachswift615/agent-power-tools
+
+# Verify the formula was updated
+gh api repos/zachswift615/homebrew-powertools/contents/Formula/powertools.rb \
+  | jq -r '.content' | base64 -d | grep 'version'
+```
+
+The workflow will automatically:
+- Download the release assets and checksums
+- Update the formula with the new version and SHA256 hashes
+- Commit and push to the homebrew-powertools repository
+
+**Manual Update (Alternative):**
+
+If the automated workflow fails, you can manually update the formula:
 
 ```bash
 # Clone the tap repository
 git clone https://github.com/zachswift615/homebrew-powertools
 cd homebrew-powertools
 
-# Download the new tarball
-curl -L -o powertools-X.Y.Z.tar.gz \
-  https://github.com/zachswift615/agent-power-tools/archive/vX.Y.Z.tar.gz
+# Download checksums from the release
+gh release download vX.Y.Z \
+  --repo zachswift615/agent-power-tools \
+  --pattern "*.tar.gz.sha256"
 
-# Calculate SHA256
-SHA256=$(sha256sum powertools-X.Y.Z.tar.gz | awk '{print $1}')
+# Extract SHA256 values
+ARM64_SHA=$(cat powertools-macos-arm64.tar.gz.sha256 | awk '{print $1}')
+X86_64_SHA=$(cat powertools-macos-x86_64.tar.gz.sha256 | awk '{print $1}')
+LINUX_SHA=$(cat powertools-linux-x86_64.tar.gz.sha256 | awk '{print $1}')
 
 # Update Formula/powertools.rb
 # - Change version = "X.Y.Z"
-# - Update sha256 with new value
-# - Test locally: brew install --build-from-source ./Formula/powertools.rb
+# - Update arm64 sha256 = "$ARM64_SHA"
+# - Update x86_64 sha256 = "$X86_64_SHA"
+# - Update linux sha256 = "$LINUX_SHA"
+
+# Test locally
+brew install --build-from-source ./Formula/powertools.rb
 
 # Commit and push
 git add Formula/powertools.rb
-git commit -m "powertools X.Y.Z"
+git commit -m "Update powertools to vX.Y.Z"
 git push
 ```
 
-**Note:** If using GitHub releases as the source, update the formula to point to the release tarball.
+**Why Manual Trigger?**
+
+GitHub Actions workflows triggered by `GITHUB_TOKEN` cannot trigger other workflows in the same repository (security feature). Since the release workflow uses `GITHUB_TOKEN`, it cannot automatically trigger the Homebrew update workflow.
+
+**Future Improvement Options:**
+1. Use a Personal Access Token (PAT) in release.yml instead of GITHUB_TOKEN
+2. Combine both workflows into a single release workflow
+3. Keep the current manual trigger approach (most secure)
 
 ### 8. Announce Release
 
@@ -288,7 +329,10 @@ git push origin "v$VERSION"
 
 # 6. Wait for CI/CD (check GitHub Actions)
 
-# 7. Update Homebrew formula (if needed)
+# 7. Trigger Homebrew formula update (REQUIRED)
+gh workflow run "Update Homebrew Formula" \
+  --repo zachswift615/agent-power-tools \
+  -f version_tag="v$VERSION"
 ```
 
 ## Resources
