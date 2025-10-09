@@ -212,6 +212,33 @@ pub struct BatchReplaceParams {
     pub preview: bool,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RenameSymbolParams {
+    /// File path where the symbol is located
+    pub file: String,
+
+    /// Line number (1-indexed)
+    pub line: usize,
+
+    /// Column number (1-indexed)
+    pub column: usize,
+
+    /// New name for the symbol
+    pub new_name: String,
+
+    /// Project root directory (defaults to current directory)
+    #[serde(default)]
+    pub project_root: Option<String>,
+
+    /// Preview changes without applying (default: true for safety)
+    #[serde(default = "default_true")]
+    pub preview: bool,
+
+    /// Update imports/exports (default: true)
+    #[serde(default = "default_true")]
+    pub update_imports: bool,
+}
+
 fn default_true() -> bool {
     true
 }
@@ -572,6 +599,92 @@ impl PowertoolsService {
                 }
                 Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                     "Failed to apply changes: {}",
+                    e
+                ))])),
+            }
+        }
+    }
+
+    /// Rename a symbol across the codebase
+    #[tool(description = "Rename a symbol across the entire codebase with semantic awareness. ALWAYS preview first (preview=true) to see all changes. Uses SCIP indexes for precise symbol resolution.")]
+    async fn rename_symbol(
+        &self,
+        Parameters(params): Parameters<RenameSymbolParams>,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::indexers::ScipQuery;
+        use crate::refactor::{RenameOptions, SymbolRenamer, TransactionMode};
+
+        let project_root = params.project_root
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.project_root.clone());
+
+        // Load SCIP index
+        let scip_query = match ScipQuery::from_project(project_root.clone()) {
+            Ok(q) => q,
+            Err(e) => return Ok(CallToolResult::error(vec![Content::text(format!(
+                "Failed to load SCIP index: {}. Run 'powertools index' first.",
+                e
+            ))])),
+        };
+
+        // Create renamer
+        let renamer = SymbolRenamer::new(&scip_query, project_root.clone());
+
+        // Build options
+        let options = RenameOptions {
+            file_path: PathBuf::from(&params.file),
+            line: params.line,
+            column: params.column,
+            new_name: params.new_name.clone(),
+            update_imports: params.update_imports,
+            mode: if params.preview {
+                TransactionMode::DryRun
+            } else {
+                TransactionMode::Execute
+            },
+        };
+
+        if params.preview {
+            // Preview mode - show what would change
+            match renamer.preview(options) {
+                Ok(summary) => {
+                    let result = serde_json::json!({
+                        "preview": true,
+                        "total_files": summary.total_files,
+                        "total_changes": summary.total_changes,
+                        "total_import_changes": summary.total_import_changes,
+                        "overall_risk": summary.overall_risk,
+                        "warnings": summary.warnings,
+                        "file_changes": summary.file_changes,
+                    });
+                    Ok(CallToolResult::success(vec![Content::text(
+                        serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string())
+                    )]))
+                }
+                Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed to preview rename: {}",
+                    e
+                ))])),
+            }
+        } else {
+            // Apply mode - make the changes
+            match renamer.rename(options) {
+                Ok(result) => {
+                    let response = serde_json::json!({
+                        "success": true,
+                        "old_name": result.old_name,
+                        "new_name": result.new_name,
+                        "references_updated": result.references_updated,
+                        "files_modified": result.files_modified,
+                        "imports_updated": result.imports_updated,
+                        "modified_files": result.transaction_result.files_modified,
+                    });
+                    Ok(CallToolResult::success(vec![Content::text(
+                        serde_json::to_string_pretty(&response).unwrap_or_else(|_| response.to_string())
+                    )]))
+                }
+                Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed to rename symbol: {}",
                     e
                 ))])),
             }
