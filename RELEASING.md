@@ -123,36 +123,43 @@ GitHub Actions will automatically:
 
 **Monitor:** Check https://github.com/zachswift615/agent-power-tools/actions
 
-### 7. Update Homebrew Formula (Manual Trigger Required)
+### 7. Homebrew Formula Update (Fully Automated)
 
-**Important:** Due to GitHub Actions security restrictions, the Homebrew formula update workflow cannot be automatically triggered by the release workflow. You must manually trigger it after each release.
+The Homebrew formula is **automatically updated** as part of the release workflow! No manual action required.
 
-**Automated Update (Recommended):**
-
-After the release completes, manually trigger the update workflow:
-
-```bash
-# Trigger the Homebrew update workflow for the new release
-gh workflow run "Update Homebrew Formula" \
-  --repo zachswift615/agent-power-tools \
-  -f version_tag=vX.Y.Z
-
-# Monitor the workflow
-gh run watch --repo zachswift615/agent-power-tools
-
-# Verify the formula was updated
-gh api repos/zachswift615/homebrew-powertools/contents/Formula/powertools.rb \
-  | jq -r '.content' | base64 -d | grep 'version'
-```
-
-The workflow will automatically:
-- Download the release assets and checksums
-- Update the formula with the new version and SHA256 hashes
+The release workflow will:
+- Build binaries for all platforms
+- Generate SHA256 checksums
+- Upload release assets to GitHub
+- **Automatically update the Homebrew formula** with new version and checksums
 - Commit and push to the homebrew-powertools repository
 
-**Manual Update (Alternative):**
+**Verification:**
 
-If the automated workflow fails, you can manually update the formula:
+You can verify the formula was updated:
+
+```bash
+# Check the updated formula
+gh api repos/zachswift615/homebrew-powertools/contents/Formula/powertools.rb \
+  | jq -r '.content' | base64 -d | grep 'version'
+
+# Or view the commit
+gh api repos/zachswift615/homebrew-powertools/commits \
+  --jq '.[0] | {message: .commit.message, date: .commit.author.date}'
+```
+
+**Manual Update (Backup Only):**
+
+If the automated update fails for any reason, you can manually trigger the backup workflow:
+
+```bash
+# Trigger the manual backup workflow
+gh workflow run "Update Homebrew Formula (Manual Backup)" \
+  --repo zachswift615/agent-power-tools \
+  -f version_tag=vX.Y.Z
+```
+
+Or update completely manually:
 
 ```bash
 # Clone the tap repository
@@ -183,15 +190,6 @@ git add Formula/powertools.rb
 git commit -m "Update powertools to vX.Y.Z"
 git push
 ```
-
-**Why Manual Trigger?**
-
-GitHub Actions workflows triggered by `GITHUB_TOKEN` cannot trigger other workflows in the same repository (security feature). Since the release workflow uses `GITHUB_TOKEN`, it cannot automatically trigger the Homebrew update workflow.
-
-**Future Improvement Options:**
-1. Use a Personal Access Token (PAT) in release.yml instead of GITHUB_TOKEN
-2. Combine both workflows into a single release workflow
-3. Keep the current manual trigger approach (most secure)
 
 ### 8. Announce Release
 
@@ -328,11 +326,11 @@ git tag -a "v$VERSION" -m "Release v$VERSION"
 git push origin "v$VERSION"
 
 # 6. Wait for CI/CD (check GitHub Actions)
-
-# 7. Trigger Homebrew formula update (REQUIRED)
-gh workflow run "Update Homebrew Formula" \
-  --repo zachswift615/agent-power-tools \
-  -f version_tag="v$VERSION"
+# The release workflow will automatically:
+#   - Build binaries
+#   - Create GitHub release
+#   - Update Homebrew formula
+# All done automatically!
 ```
 
 ## Resources
