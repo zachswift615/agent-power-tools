@@ -3,6 +3,12 @@ name: Update Homebrew Formula
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      version_tag:
+        description: 'Release tag to update formula for (e.g., v0.1.4)'
+        required: true
+        type: string
 
 env:
   HOMEBREW_TAP_REPO: zachswift615/homebrew-powertools
@@ -17,7 +23,14 @@ jobs:
       - name: Get release version
         id: get_version
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Manual trigger - use provided tag
+            VERSION=${{ inputs.version_tag }}
+            VERSION=${VERSION#v}  # Remove 'v' prefix if present
+          else
+            # Release event - extract from tag
+            VERSION=${GITHUB_REF#refs/tags/v}
+          fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Version: $VERSION"
 
