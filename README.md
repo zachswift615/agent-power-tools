@@ -176,9 +176,9 @@ powertools search-ast "(constructor) @ctor"
 | JavaScript | ✅ | ✅ | ✅ (`@sourcegraph/scip-typescript`) |
 | Python | ✅ | ✅ | ✅ (`@sourcegraph/scip-python`) |
 | Rust | ✅ | ✅ | ✅ (`rust-analyzer`) |
+| C++ | ✅ | ✅ | ✅ (`scip-clang`) |
 | Go | ✅ | ⏳ | - |
 | Java | ✅ | ⏳ | - |
-| C/C++ | ✅ | ⏳ | - |
 
 **Legend:**
 - ✅ Fully supported
@@ -186,6 +186,12 @@ powertools search-ast "(constructor) @ctor"
 - Tree-sitter: Pattern matching, function/class listing
 - SCIP: Go to definition, find references
 - Auto-Install: Automatically installs required indexers
+
+**C++ Requirements:**
+- Requires `compile_commands.json` (compilation database)
+- Generate with CMake: `cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..`
+- Or use Bear for Make projects: `bear -- make`
+- scip-clang auto-downloads and installs to `~/.local/bin`
 
 ## Performance
 

@@ -105,6 +105,13 @@ Example: On a project with 1,438 functions, `list_functions` with `limit=100` re
 - **JavaScript**: Full semantic navigation via scip-typescript (requires tsconfig.json with `allowJs: true`)
 - **Python**: Full semantic navigation via scip-python
 - **Rust**: Full semantic navigation via rust-analyzer
+- **C++**: Full semantic navigation via scip-clang (requires `compile_commands.json`)
+
+**C++ Requirements:**
+- Must have `compile_commands.json` (compilation database)
+- Generate with CMake: `cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON ..`
+- Or use Bear for Make: `bear -- make`
+- scip-clang auto-installs to `~/.local/bin`
 
 **Multi-language projects:** Powertools automatically detects and indexes all languages in a project. For example, a project with both TypeScript and Python will generate both `index.typescript.scip` and `index.python.scip`, and queries will search across both.
 
