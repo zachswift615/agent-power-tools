@@ -222,7 +222,7 @@ powertools search-ast "(constructor) @ctor"
 - **Multi-language**: Indexes all detected languages in parallel
 
 **Tested on:**
-- alloy-crm (1,975 files, Python/JavaScript): Successfully indexed and navigated
+- private repo (1,975 files, Python/JavaScript): Successfully indexed and navigated
 - agent-powertools (Rust): <5s full index
 
 ## Development
