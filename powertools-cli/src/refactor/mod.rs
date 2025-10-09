@@ -1,13 +1,18 @@
 pub mod imports;
 mod preview;
 mod replacer;
+mod transaction;
 
 pub use preview::generate_preview;
-#[allow(unused_imports)]
-pub use preview::{PreviewChange, PreviewDiff};
+pub use preview::{
+    ChangeType, ImportChange, PreviewChange, PreviewDiff, RefactoringSummary, RiskLevel,
+};
 pub use replacer::BatchReplacer;
 #[allow(unused_imports)]
 pub use replacer::ReplacementMode;
+pub use transaction::{
+    FileOperation, RefactoringTransaction, TransactionMode, TransactionResult,
+};
 
 use std::path::PathBuf;
 

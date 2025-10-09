@@ -69,7 +69,6 @@ impl ImportAnalyzer for CppImportAnalyzer {
         let mut imports = Vec::new();
 
         // Traverse the tree to find #include directives
-        let mut cursor = root.walk();
         let mut visit_stack = vec![root];
 
         while let Some(node) = visit_stack.pop() {
