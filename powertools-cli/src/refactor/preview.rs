@@ -23,6 +23,7 @@ pub struct PreviewChange {
 
 /// Type of change being made
 #[derive(Debug, Clone, Serialize, PartialEq)]
+#[allow(dead_code)] // Used in future refactoring implementations
 pub enum ChangeType {
     /// Renaming a symbol
     Rename,
@@ -55,6 +56,7 @@ pub enum RiskLevel {
 
 /// Import change being tracked
 #[derive(Debug, Clone, Serialize)]
+#[allow(dead_code)] // Used in future refactoring implementations
 pub struct ImportChange {
     /// Type of import change
     pub change_type: ChangeType,
@@ -105,6 +107,7 @@ impl PreviewDiff {
         self.import_changes.push(import_change);
     }
 
+    #[allow(dead_code)] // Used in future refactoring implementations
     pub fn set_risk_level(&mut self, risk: RiskLevel) {
         self.risk_level = risk;
     }

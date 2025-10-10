@@ -2,12 +2,12 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::core::{Location, Reference};
 use crate::indexers::ScipQuery;
 
-use super::imports::{get_analyzer_for_file, ImportStatement};
+use super::imports::get_analyzer_for_file;
 use super::preview::{ChangeType, ImportChange, PreviewChange, PreviewDiff, RefactoringSummary};
 use super::transaction::{RefactoringTransaction, TransactionMode, TransactionResult};
 
@@ -58,6 +58,7 @@ pub struct RenameResult {
 /// Rename a symbol across the codebase
 pub struct SymbolRenamer<'a> {
     scip_query: &'a ScipQuery,
+    #[allow(dead_code)] // Reserved for future use in path resolution
     project_root: PathBuf,
 }
 
@@ -282,7 +283,7 @@ impl<'a> SymbolRenamer<'a> {
             }
 
             // Replace the symbol
-            let mut chars: Vec<char> = line.chars().collect();
+            let chars: Vec<char> = line.chars().collect();
 
             // Find the actual bounds of the identifier
             let mut start = col_idx;

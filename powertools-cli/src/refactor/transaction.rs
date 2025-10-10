@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use super::preview::{RefactoringSummary, RiskLevel};
+use super::preview::RefactoringSummary;
 
 /// A single file operation in a transaction
 #[derive(Debug, Clone, Serialize)]
@@ -86,6 +86,7 @@ impl RefactoringTransaction {
     }
 
     /// Add a file operation by reading the current file content
+    #[allow(dead_code)] // Used in future refactoring implementations
     pub fn add_file_change(&mut self, path: PathBuf, new_content: String) -> Result<()> {
         let original_content = if path.exists() {
             fs::read_to_string(&path)
@@ -195,6 +196,7 @@ impl RefactoringTransaction {
     }
 
     /// Get a preview summary of this transaction
+    #[allow(dead_code)] // Used in future refactoring implementations
     pub fn preview(&self) -> Result<RefactoringSummary> {
         use super::preview::{ChangeType, ImportChange, PreviewChange, PreviewDiff};
 
@@ -254,11 +256,13 @@ impl RefactoringTransaction {
     }
 
     /// Get the list of operations
+    #[allow(dead_code)] // Used in future refactoring implementations
     pub fn operations(&self) -> &[FileOperation] {
         &self.operations
     }
 
     /// Check if transaction is committed
+    #[allow(dead_code)] // Used in future refactoring implementations
     pub fn is_committed(&self) -> bool {
         self.committed
     }
@@ -288,11 +292,13 @@ pub struct TransactionResult {
 
 impl TransactionResult {
     /// Check if transaction was successful
+    #[allow(dead_code)] // Used in future refactoring implementations
     pub fn is_success(&self) -> bool {
         self.failed_operations == 0
     }
 
     /// Format result for display
+    #[allow(dead_code)] // Used in future refactoring implementations
     pub fn format_summary(&self) -> String {
         let mut output = String::new();
 

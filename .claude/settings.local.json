@@ -80,7 +80,10 @@
       "Bash(/Users/zachswift/projects/agent-power-tools/powertools-cli/target/release/powertools index --auto-install --languages rust)",
       "Bash(/Users/zachswift/projects/agent-power-tools/powertools-cli/target/release/powertools:*)",
       "Bash(~/.cargo/bin/cargo build --release --quiet)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(gh run view:*)",
+      "Bash(~/.cargo/bin/cargo fix --bin \"powertools\" --allow-dirty --manifest-path=/Users/zachswift/projects/agent-power-tools/powertools-cli/Cargo.toml)",
+      "Bash(~/.cargo/bin/cargo build --manifest-path=/Users/zachswift/projects/agent-power-tools/powertools-cli/Cargo.toml)"
     ],
     "deny": [],
     "ask": []

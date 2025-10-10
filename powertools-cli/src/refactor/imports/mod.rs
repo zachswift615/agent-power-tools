@@ -74,6 +74,7 @@ pub enum ImportKind {
 
 /// Change to an import statement
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[allow(dead_code)] // Used in future refactoring implementations
 pub struct ImportChange {
     pub kind: ImportChangeKind,
     pub statement: ImportStatement,
@@ -81,6 +82,7 @@ pub struct ImportChange {
 
 /// Type of change to an import
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[allow(dead_code)] // Used in future refactoring implementations
 pub enum ImportChangeKind {
     Add,
     Remove,
@@ -93,12 +95,15 @@ pub trait ImportAnalyzer {
     fn find_imports(&self, file: &Path) -> Result<Vec<ImportStatement>>;
 
     /// Add an import to a file, returning the new file content
+    #[allow(dead_code)] // Used in future refactoring implementations
     fn add_import(&self, file: &Path, import: &ImportStatement) -> Result<String>;
 
     /// Remove an import from a file by symbol name, returning the new file content
+    #[allow(dead_code)] // Used in future refactoring implementations
     fn remove_import(&self, file: &Path, symbol: &str) -> Result<String>;
 
     /// Update the source path of an import, returning the new file content
+    #[allow(dead_code)] // Used in future refactoring implementations
     fn update_import_path(&self, file: &Path, old_path: &str, new_path: &str) -> Result<String>;
 }
 

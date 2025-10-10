@@ -5,16 +5,11 @@ mod replacer;
 mod transaction;
 
 pub use preview::generate_preview;
-pub use preview::{
-    ChangeType, ImportChange, PreviewChange, PreviewDiff, RefactoringSummary, RiskLevel,
-};
-pub use rename::{RenameOptions, RenameResult, SymbolRenamer};
+pub use rename::{RenameOptions, SymbolRenamer};
 pub use replacer::BatchReplacer;
 #[allow(unused_imports)]
 pub use replacer::ReplacementMode;
-pub use transaction::{
-    FileOperation, RefactoringTransaction, TransactionMode, TransactionResult,
-};
+pub use transaction::TransactionMode;
 
 use std::path::PathBuf;
 
