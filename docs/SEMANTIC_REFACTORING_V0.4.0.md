@@ -1,7 +1,7 @@
 # Semantic Refactoring Tools - v0.4.0 Implementation
 
-**Status:** 🟡 In Progress - Week 2 Core Refactorings (Phase 2.1 Complete ✅)
-**Current Phase:** Week 2 Phase 2.2 - Inline Variable
+**Status:** 🟡 In Progress - Week 2 Core Refactorings (Phase 2.1 Complete & Tested ✅)
+**Current Phase:** Week 2 Phase 2.2 - Inline Variable (Next)
 **Target Release:** Q1 2026
 **Timeline:** 2-3 weeks
 **Started:** 2025-10-09
@@ -16,14 +16,14 @@ Week 1: Foundation                    [█████████████�
 └─ Phase 1.3: Transaction System      [████████████████████] ✅ DONE
 
 Week 2: Core Refactorings             [██████░░░░░░░░░░░░░░] 33% Complete
-├─ Phase 2.1: Rename Symbol           [████████████████████] ✅ DONE
+├─ Phase 2.1: Rename Symbol           [████████████████████] ✅ TESTED
 ├─ Phase 2.2: Inline Variable         [░░░░░░░░░░░░░░░░░░░░] NEXT
 └─ Phase 2.3: Move Symbol             [░░░░░░░░░░░░░░░░░░░░] Pending
 
 Overall v0.4.0 Progress:              [████████░░░░░░░░░░░░] 40% Complete
 ```
 
-**Latest Milestone:** Rename symbol refactoring complete! SCIP-based symbol resolution with full import update support (~480 lines)
+**Latest Milestone:** Rename symbol refactoring complete & tested on real projects! Fixed critical SCIP column indexing bug. Verified working on TypeScript (TanStack Query) and Rust (powertools) codebases.
 
 ---
 
@@ -525,7 +525,7 @@ All foundation systems are in place:
 
 **Completed:** 2025-10-09 (same day!)
 
-**Week 2, Phase 2.1 - Rename Symbol Refactoring:** ✅ **COMPLETE**
+**Week 2, Phase 2.1 - Rename Symbol Refactoring:** ✅ **COMPLETE & TESTED**
 - [x] SymbolRenamer struct with SCIP integration
 - [x] Symbol extraction from source location
 - [x] find_definition and find_references integration
@@ -534,16 +534,30 @@ All foundation systems are in place:
 - [x] Transaction-based atomic refactoring
 - [x] Preview mode with RefactoringSummary integration
 - [x] CLI command: `powertools rename-symbol`
+- [x] MCP tool integration (`rename_symbol`)
 - [x] Full test coverage
+- [x] **CRITICAL BUG FIX:** Fixed SCIP column indexing (0-based vs 1-based) in `scip_query_simple.rs`
+- [x] **TESTED:** Successfully renamed symbols in real-world projects (see below)
 
-**Code:** ~480 lines in `src/refactor/rename.rs` + `src/commands/rename_symbol.rs`
+**Code:** ~480 lines in `src/refactor/rename.rs` + `src/commands/rename_symbol.rs` + 85 lines MCP integration
+
+**Real-World Testing:**
+- ✅ **TypeScript (TanStack Query):** `mount` → `mountClient` across 12 files, 31 references
+- ✅ **Rust (powertools):** Previewed `new` → `create` across 33 files, 230 references
+- ⏳ **Python:** Not yet tested (pending)
+- ⏳ **C++:** Not yet tested (pending)
 
 ### 🟡 In Progress - Week 2: Core Refactorings
 
 **Current Phase:**
-- [x] Phase 2.1: Rename Symbol ✅ DONE
+- [x] Phase 2.1: Rename Symbol ✅ TESTED & WORKING
 - [ ] Phase 2.2: Inline Variable (NEXT)
 - [ ] Phase 2.3: Move Symbol
+
+**Known Issues & Future Work:**
+- [ ] **TODO:** Handle monorepo TypeScript projects better (auto-detect package.json subdirectories)
+- [ ] **TODO:** Test rename-symbol on Python projects (poetry-core)
+- [ ] **TODO:** Test rename-symbol on C++ projects (nlohmann/json)
 
 ### ⏳ Pending
 
@@ -612,6 +626,40 @@ Beyond v0.4.0, we can build:
 ---
 
 ## Questions & Decisions Log
+
+### 2025-10-09: Critical SCIP Column Indexing Bug Fix
+
+**Issue:** Symbol lookups failing with "No symbol found at location" errors
+
+**Root Cause:** SCIP uses 0-based line/column indexing internally, but our CLI/APIs use 1-based indexing (editor standard). We had TWO bugs:
+1. **Input conversion:** Converted line to 0-based (`line - 1`) but NOT column
+2. **Output conversion:** Converted line to 1-based (`line + 1`) but NOT column
+
+**Fix Applied:**
+- `scip_query_simple.rs:97` - Convert column to 0-based: `column.saturating_sub(1)`
+- `scip_query_simple.rs:124, 138, 171` - Convert column to 1-based: `(column as usize) + 1`
+
+**Verification:**
+- ✅ TypeScript: Successfully renamed `mount` → `mountClient` in TanStack Query (12 files, 31 refs)
+- ✅ Rust: Successfully previewed `new` → `create` in powertools (33 files, 230 refs)
+
+**Commit:** `a4bd719` - fix: Critical SCIP column indexing bug (0-based vs 1-based)
+
+### 2025-10-09: TypeScript Monorepo Indexing Discovery
+
+**Issue:** TanStack Query at repo root produced tiny 5.8KB index vs expected multi-MB index
+
+**Root Cause:** Root `tsconfig.json` only includes `["*.config.*"]` files, not source code. Monorepos have package-level tsconfigs with actual source.
+
+**Workaround:** Index at package level (e.g., `packages/query-core/`) instead of repo root.
+
+**Future Solution Needed:**
+- Auto-detect monorepo structure (presence of `packages/` or `workspaces` in package.json)
+- Recursively find package-level tsconfig.json files
+- Index each package separately
+- Aggregate SCIP indexes for cross-package refactoring
+
+**TODO:** Implement smart monorepo indexing strategy in `scip_indexer.rs`
 
 ### 2025-10-09: Parser Library Selection
 
