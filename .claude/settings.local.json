@@ -71,7 +71,14 @@
       "WebFetch(domain:crates.io)",
       "Bash(mkdir:*)",
       "Bash(~/.cargo/bin/cargo test --manifest-path=/Users/zachswift/projects/agent-power-tools/powertools-cli/Cargo.toml --lib refactor::transaction)",
-      "Bash(~/.cargo/bin/cargo build --release --manifest-path=/Users/zachswift/projects/agent-power-tools/powertools-cli/Cargo.toml)"
+      "Bash(~/.cargo/bin/cargo build --release --manifest-path=/Users/zachswift/projects/agent-power-tools/powertools-cli/Cargo.toml)",
+      "Read(//Users/zachswift/projects/refactorTestingRepos/**)",
+      "Bash(/Users/zachswift/projects/agent-power-tools/powertools-cli/target/release/powertools index --auto-install --languages typescript)",
+      "Bash(/Users/zachswift/projects/agent-power-tools/powertools-cli/target/release/powertools rename-symbol packages/query-core/src/queryClient.ts 79 3 mountClient --preview --project /Users/zachswift/projects/refactorTestingRepos/query)",
+      "Bash(/Users/zachswift/projects/agent-power-tools/powertools-cli/target/release/powertools definition packages/query-core/src/queryClient.ts:79:10 --format json -p /Users/zachswift/projects/refactorTestingRepos/query)",
+      "Bash(/Users/zachswift/projects/agent-power-tools/powertools-cli/target/release/powertools references mount --format json -p /Users/zachswift/projects/refactorTestingRepos/query)",
+      "Bash(/Users/zachswift/projects/agent-power-tools/powertools-cli/target/release/powertools index --auto-install --languages rust)",
+      "Bash(/Users/zachswift/projects/agent-power-tools/powertools-cli/target/release/powertools:*)"
     ],
     "deny": [],
     "ask": []
