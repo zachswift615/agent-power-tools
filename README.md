@@ -353,6 +353,62 @@ Commands are modular - add new ones by:
 - ⏳ Change impact analysis
 - ⏳ Test coverage mapping
 
+## Known Issues
+
+### Python: Test File References Not Indexed (scip-python upstream bug)
+
+**Impact:** When using `find_references` or `rename_symbol` on Python projects, references from test files are not found. For example, querying for `Factory` might return 398 references from `src/` but 0 from `tests/`, even though tests import and use the symbol extensively.
+
+**Root Cause:** This is an upstream bug in [scip-python](https://github.com/sourcegraph/scip-python), not in powertools. The issue is in `treeVisitor.ts`'s `emitDeclaration()` method:
+
+1. When test files reference imported symbols (e.g., `Factory` imported via `from poetry.core.factory import Factory`)
+2. Pyright's `getDeclarationsForNameNode()` returns the **import statement** in the test file, not the original class definition
+3. The code checks for cached symbols and returns early (line ~582-596)
+4. For alias declarations, it should fall through to alias resolution logic, but even when it does:
+5. `resolveAliasDeclaration(decl, true, true)` returns `null` for test file imports
+6. This causes the fallback to use `decl.node` (the import) with moduleName `tests.conftest` instead of `poetry.core.factory`
+
+**Example:**
+```python
+# tests/conftest.py
+from poetry.core.factory import Factory  # Line 14
+
+def test_factory():
+    return Factory()  # Line 113 - NOT indexed as a reference to src/poetry/core/factory.py
+```
+
+The occurrence is created with symbol `tests.conftest/Factory` instead of `src.poetry.core.factory/Factory#`, making it invisible to find-references queries.
+
+**Workaround:** None currently available. When using `rename_symbol` on Python projects, you must manually update test files:
+
+```bash
+# 1. Rename in source files with powertools
+powertools rename-symbol src/module.py 10 5 NewName --preview
+
+# 2. Manually find and replace in test files
+grep -r "OldName" tests/  # Manual editing required
+```
+
+**Affected Operations:**
+- ✅ `goto_definition` - Works correctly (resolves to source file)
+- ❌ `find_references` - Missing all test file references
+- ❌ `rename_symbol` - Renames source files but leaves test files unchanged
+- ✅ `list_functions` - Test functions are indexed correctly
+- ✅ Tree-sitter operations - Not affected (AST-based, not SCIP-based)
+
+**Status:**
+- Powertools is working correctly - loads all documents, queries properly
+- scip-python has a bug in alias resolution for imported symbols
+- Detailed bug report: [scip-python/BUG_REPORT_TEST_FILE_REFERENCES.md](https://github.com/sourcegraph/scip-python)
+- Other languages (TypeScript, Rust, C++) are not affected
+
+**Upstream Fix Required:** The fix needs to be implemented in scip-python's `treeVisitor.ts`:
+1. Don't return early for alias declarations when `existingSymbol` is found
+2. Ensure `resolveAliasDeclaration()` properly resolves imports from all files (not just src/)
+3. Use the resolved declaration's symbol, not the import's local symbol
+
+For full technical details and reproduction steps, see: `docs/KNOWN_ISSUE_PYTHON_TEST_REFERENCES.md`
+
 ## Contributing
 
 Contributions are welcome! Please read our contributing guidelines and submit PRs.
