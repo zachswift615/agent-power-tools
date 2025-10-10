@@ -47,8 +47,11 @@ After creating the file and restarting Claude Code, the following tools will be 
 - `watcher_stop` - Pause automatic re-indexing
 - `get_watcher_status` - Check if watcher is running and get project info
 
-**Batch Operations Tools (NEW in v0.3.0):**
+**Batch Operations Tools (NEW in v0.3.0, Production-Ready v0.3.1):**
 - `batch_replace` - Replace text across multiple files using regex patterns with preview
+  - **Production-Tested**: Validated on real projects (TanStack Query, poetry-core, nlohmann/json)
+  - **Supports**: Regex capture groups ($1, $2), file glob filtering, risk assessment
+  - **Safe by default**: Preview mode prevents accidental mass edits
 
 **Important: The file watcher starts AUTOMATICALLY when the MCP server starts!** This means:
 - Indexes stay fresh as the user edits code

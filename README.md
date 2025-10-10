@@ -37,6 +37,13 @@ For Claude Code integration, add a `.mcp.json` file to your project root (see [M
 - **Auto-indexing** - Automatically installs and runs language-specific indexers
 - **Pagination** - Handle large result sets efficiently (default 100, customizable)
 
+### ✅ Batch File Operations (NEW in v0.3.0)
+- **Regex Replace** - Replace patterns across multiple files with preview
+- **Capture Groups** - Use `$1`, `$2` for complex transformations
+- **File Filtering** - Glob patterns to limit scope (`*.ts`, `**/*.py`)
+- **Safety First** - Preview mode by default, requires explicit apply
+- **Risk Assessment** - Warns about high-change-count files
+
 ### ✅ AST Pattern Matching (Tree-sitter based)
 - **Pattern Search** - Search for code patterns using Tree-sitter queries
 - **Function Finder** - List all functions in a project with signatures
@@ -134,6 +141,7 @@ The best way to use powertools with Claude Code is through MCP integration:
 - `list_functions` - List all functions (with pagination)
 - `list_classes` - List all classes/structs (with pagination)
 - `project_stats` - Get codebase statistics
+- `batch_replace` - Replace patterns across multiple files with preview (NEW in v0.3.0)
 - `watcher_start` - Start the file watcher (auto-starts by default)
 - `watcher_stop` - Stop the file watcher
 - `get_watcher_status` - Get watcher status and project info
@@ -168,7 +176,52 @@ powertools classes --include-nested --format json
 
 # Get project statistics
 powertools stats
+
+# Batch replace across files (NEW in v0.3.0)
+powertools batch-replace "old_pattern" "new_text" --preview --files "**/*.ts"
+powertools batch-replace "export (class|interface) ([A-Z]\w+)" "/** Exported $1 */\nexport $1 $2" --preview --files "**/*.ts"
 ```
+
+### Batch Replace Examples
+
+**Fix typos across codebase:**
+```bash
+powertools batch-replace "recieve" "receive" --preview --files "**/*.ts"
+```
+
+**Update API URLs:**
+```bash
+powertools batch-replace "api\.old\.com" "api.new.com" --preview --files "**/*.ts"
+```
+
+**Add JSDoc comments to exports (using capture groups):**
+```bash
+powertools batch-replace "export (class|interface|type) ([A-Z]\w+)" "/** Exported $1 */\nexport $1 $2" --preview --files "**/*.ts"
+```
+
+**Add type hints to Python methods:**
+```bash
+powertools batch-replace "def (\w+)\(self\)" "def $1(self) -> None" --preview --files "**/*.py"
+```
+
+**Update copyright years:**
+```bash
+powertools batch-replace "Copyright ([0-9]{4})" "Copyright $1-2025" --preview --files "**/*.{ts,js,py,rs}"
+```
+
+**Apply changes (after previewing):**
+```bash
+# Remove --preview flag to apply
+powertools batch-replace "old_pattern" "new_text" --files "**/*.ts"
+```
+
+**Features:**
+- ✅ Regex patterns with capture groups (`$1`, `$2`)
+- ✅ Preview mode by default (requires explicit opt-in to apply)
+- ✅ File glob filtering (`*.ts`, `**/*.py`, `**/*.{js,ts}`)
+- ✅ Risk assessment (warns on high-change files)
+- ✅ Ignore patterns (skips `.git/`, `node_modules/`, `target/`, etc.)
+- ✅ JSON output for MCP integration
 
 ### Tree-sitter Query Examples
 

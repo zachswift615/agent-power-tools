@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2025-10-09
+
+### Added
+- **Production Testing & Documentation**: Comprehensive real-world testing across all 4 languages
+  - Tested `batch-replace` on open-source projects: TanStack Query (TypeScript), powertools (Rust), poetry-core (Python), nlohmann/json (C++)
+  - Validated regex capture groups, alternation, character classes, word boundaries across all languages
+  - Tested large-scale operations (74 files, 589 changes in Python project)
+  - Added comprehensive testing documentation to `SEMANTIC_REFACTORING_V0.4.0.md`
+  - Updated README.md with detailed batch-replace examples and usage
+
+- **Documentation Improvements**:
+  - Added dedicated "Batch Replace Examples" section to README
+  - Documented all advanced features (capture groups, file filtering, risk assessment)
+  - Added 6 real-world usage examples (typo fixes, API URLs, JSDoc, type hints, copyright)
+  - Updated MCP tools list to include `batch_replace`
+
+### Changed
+- Enhanced README.md with production-ready batch-replace documentation
+- Reorganized CLI examples to highlight batch operations
+
+### Technical Validation
+- ✅ TypeScript: 18 files, 138 changes (regex + capture groups)
+- ✅ Rust: 3 files, 9 changes (method signatures)
+- ✅ Python: 74 files, 589 changes (largest scale test)
+- ✅ C++: 46 files, 50 changes (copyright updates)
+- ✅ All safety features validated: preview mode, ignore patterns, risk assessment, JSON output
+
 ## [0.3.0] - 2025-10-08
 
 ### Added
@@ -228,7 +255,8 @@ We use [Semantic Versioning](https://semver.org/):
 
 Since we're pre-1.0.0, minor versions may include breaking changes.
 
-[unreleased]: https://github.com/zachswift615/agent-power-tools/compare/v0.3.0...HEAD
+[unreleased]: https://github.com/zachswift615/agent-power-tools/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/zachswift615/agent-power-tools/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/zachswift615/agent-power-tools/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.6...v0.2.0
 [0.1.6]: https://github.com/zachswift615/agent-power-tools/compare/v0.1.5...v0.1.6
