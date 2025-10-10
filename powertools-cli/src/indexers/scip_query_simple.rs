@@ -92,9 +92,9 @@ impl ScipQuery {
             };
 
             // Find occurrence at the given position
-            // SCIP uses 0-based indexing
+            // SCIP uses 0-based indexing, convert from 1-based input
             let target_line = line.saturating_sub(1) as i32;
-            let target_col = column as i32;
+            let target_col = column.saturating_sub(1) as i32;
 
             let occurrence = doc.occurrences.iter().find(|occ| {
                 if occ.range.len() >= 3 {
@@ -121,9 +121,9 @@ impl ScipQuery {
                 return Ok(Some(Location {
                     file_path: self.project_root.join(&relative_path),
                     line: (occ.range[0] as usize) + 1,
-                    column: occ.range[1] as usize,
+                    column: (occ.range[1] as usize) + 1,
                     end_line: Some((occ.range.get(3).unwrap_or(&occ.range[0]) + 1) as usize),
-                    end_column: Some(*occ.range.get(4).unwrap_or(&occ.range[2]) as usize),
+                    end_column: Some((*occ.range.get(4).unwrap_or(&occ.range[2]) as usize) + 1),
                 }));
             }
 
@@ -135,9 +135,9 @@ impl ScipQuery {
                             return Ok(Some(Location {
                                 file_path: self.project_root.join(&document.relative_path),
                                 line: (occurrence.range[0] as usize) + 1,
-                                column: occurrence.range[1] as usize,
+                                column: (occurrence.range[1] as usize) + 1,
                                 end_line: Some((occurrence.range.get(3).unwrap_or(&occurrence.range[0]) + 1) as usize),
-                                end_column: Some(*occurrence.range.get(4).unwrap_or(&occurrence.range[2]) as usize),
+                                end_column: Some((*occurrence.range.get(4).unwrap_or(&occurrence.range[2]) as usize) + 1),
                             }));
                         }
                     }
@@ -168,9 +168,9 @@ impl ScipQuery {
                                     location: Location {
                                         file_path: self.project_root.join(&document.relative_path),
                                         line: (occurrence.range[0] as usize) + 1,
-                                        column: occurrence.range[1] as usize,
+                                        column: (occurrence.range[1] as usize) + 1,
                                         end_line: Some((occurrence.range.get(3).unwrap_or(&occurrence.range[0]) + 1) as usize),
-                                        end_column: Some(*occurrence.range.get(4).unwrap_or(&occurrence.range[2]) as usize),
+                                        end_column: Some((*occurrence.range.get(4).unwrap_or(&occurrence.range[2]) as usize) + 1),
                                     },
                                     kind: if is_definition { ReferenceKind::Definition } else { ReferenceKind::Reference },
                                     context: None,
