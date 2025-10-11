@@ -254,6 +254,22 @@ enum Commands {
         update_imports: bool,
     },
 
+    /// Inline a variable by replacing all usages with its initializer
+    InlineVariable {
+        /// File path where the variable is located
+        file: PathBuf,
+        /// Line number (1-indexed)
+        line: usize,
+        /// Column number (1-indexed)
+        column: usize,
+        /// Project root (defaults to current directory)
+        #[arg(short, long)]
+        project: Option<PathBuf>,
+        /// Preview changes without applying
+        #[arg(long)]
+        preview: bool,
+    },
+
     /// Clear the index cache
     ClearCache {
         /// Confirmation flag
@@ -334,6 +350,9 @@ async fn main() -> Result<()> {
         }
         Commands::RenameSymbol { file, line, column, new_name, project, preview, update_imports } => {
             commands::rename_symbol::run(file, line, column, new_name, project, preview, update_imports, &cli.format).await?
+        }
+        Commands::InlineVariable { file, line, column, project, preview } => {
+            commands::inline_variable::run(file, line, column, project, preview, &cli.format).await?
         }
         _ => {
             eprintln!("Command not yet implemented");

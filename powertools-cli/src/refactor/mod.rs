@@ -1,9 +1,11 @@
 pub mod imports;
+mod inline;
 mod preview;
 mod rename;
 mod replacer;
 mod transaction;
 
+pub use inline::{InlineOptions, VariableInliner};
 pub use preview::generate_preview;
 pub use rename::{RenameOptions, SymbolRenamer};
 pub use replacer::BatchReplacer;

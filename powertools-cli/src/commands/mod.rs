@@ -8,3 +8,4 @@ pub mod stats;
 pub mod watch;
 pub mod batch_replace;
 pub mod rename_symbol;
+pub mod inline_variable;

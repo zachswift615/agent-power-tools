@@ -239,6 +239,26 @@ pub struct RenameSymbolParams {
     pub update_imports: bool,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct InlineVariableParams {
+    /// File path where the variable is located
+    pub file: String,
+
+    /// Line number (1-indexed)
+    pub line: usize,
+
+    /// Column number (1-indexed)
+    pub column: usize,
+
+    /// Project root directory (defaults to current directory)
+    #[serde(default)]
+    pub project_root: Option<String>,
+
+    /// Preview changes without applying (default: true for safety)
+    #[serde(default = "default_true")]
+    pub preview: bool,
+}
+
 fn default_true() -> bool {
     true
 }
@@ -685,6 +705,88 @@ impl PowertoolsService {
                 }
                 Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                     "Failed to rename symbol: {}",
+                    e
+                ))])),
+            }
+        }
+    }
+
+    /// Inline a variable by replacing all usages with its initializer
+    #[tool(description = "Inline a variable by replacing all usages with its initializer value, then removing the declaration. ALWAYS preview first (preview=true). Only works on const/immutable variables without side effects.")]
+    async fn inline_variable(
+        &self,
+        Parameters(params): Parameters<InlineVariableParams>,
+    ) -> Result<CallToolResult, McpError> {
+        use crate::indexers::ScipQuery;
+        use crate::refactor::{InlineOptions, TransactionMode, VariableInliner};
+
+        let project_root = params.project_root
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.project_root.clone());
+
+        // Load SCIP index
+        let scip_query = match ScipQuery::from_project(project_root.clone()) {
+            Ok(q) => q,
+            Err(e) => return Ok(CallToolResult::error(vec![Content::text(format!(
+                "Failed to load SCIP index: {}. Run 'powertools index' first.",
+                e
+            ))])),
+        };
+
+        // Create inliner
+        let inliner = VariableInliner::new(&scip_query, project_root.clone());
+
+        // Build options
+        let options = InlineOptions {
+            file_path: PathBuf::from(&params.file),
+            line: params.line,
+            column: params.column,
+            mode: if params.preview {
+                TransactionMode::DryRun
+            } else {
+                TransactionMode::Execute
+            },
+        };
+
+        if params.preview {
+            // Preview mode - show what would change
+            match inliner.preview(options) {
+                Ok(summary) => {
+                    let result = serde_json::json!({
+                        "preview": true,
+                        "total_files": summary.total_files,
+                        "total_changes": summary.total_changes,
+                        "overall_risk": summary.overall_risk,
+                        "warnings": summary.warnings,
+                        "file_changes": summary.file_changes,
+                    });
+                    Ok(CallToolResult::success(vec![Content::text(
+                        serde_json::to_string_pretty(&result).unwrap_or_else(|_| result.to_string())
+                    )]))
+                }
+                Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed to preview inline: {}",
+                    e
+                ))])),
+            }
+        } else {
+            // Apply mode - make the changes
+            match inliner.inline(options) {
+                Ok(result) => {
+                    let response = serde_json::json!({
+                        "success": true,
+                        "variable_name": result.variable_name,
+                        "initializer_value": result.initializer_value,
+                        "usages_replaced": result.usages_replaced,
+                        "files_modified": result.files_modified,
+                        "modified_files": result.transaction_result.files_modified,
+                    });
+                    Ok(CallToolResult::success(vec![Content::text(
+                        serde_json::to_string_pretty(&response).unwrap_or_else(|_| response.to_string())
+                    )]))
+                }
+                Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed to inline variable: {}",
                     e
                 ))])),
             }
