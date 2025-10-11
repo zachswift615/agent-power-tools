@@ -625,9 +625,83 @@ import { API_URL } from './config';
 fetch(API_URL);
 ```
 
-**Why:** Variable declaration is in a different file from usages
+**Why Cross-File Support Is Not Implemented Yet:**
 
-**Future Enhancement:** Could support this with import analysis
+1. **Multi-File AST Extraction:** The current implementation extracts the variable's initializer value using tree-sitter on a single file. For cross-file variables, we'd need to:
+   - Parse the definition file to extract the initializer
+   - Track which file contains the declaration vs usages
+   - Handle the case where the definition file might also have usages
+
+2. **Import Statement Management:** When inlining an exported variable, we'd need to:
+   - Remove or update import statements in all files that imported it
+   - Handle different import styles (named imports, namespace imports, default imports)
+   - Update re-exports if the variable was re-exported from intermediate files
+   - This requires the Import Analyzer infrastructure (which we have!) but needs integration
+
+3. **Export Statement Handling:** The declaration file needs special handling:
+   - Remove the `export` keyword when removing the declaration
+   - Or remove the entire export statement if it's a standalone export
+   - Handle `export { API_URL }` style re-exports
+
+4. **Scope and Visibility:**
+   - The current filtering logic checks `r.location.file_path == var_decl.location.file_path`
+   - For cross-file, we'd need to accept references from ANY file
+   - But still ensure we're not replacing usages that are before the declaration (in the definition file)
+
+5. **Transaction Complexity:**
+   - Currently modifies 1 file (the file containing both declaration and usages)
+   - Cross-file would require modifying N+1 files (definition file + all importing files)
+   - Each file needs its own set of changes tracked in the transaction
+
+6. **Safety Validation:**
+   - Harder to reason about scope and visibility across files
+   - Need to ensure the variable is actually exported (not just module-local)
+   - Need to handle cases where the import might be aliased: `import { API_URL as apiUrl }`
+
+**Technical Implementation Approach (Future):**
+
+```rust
+// Pseudo-code for cross-file support
+fn inline_cross_file(&self, options: InlineOptions) -> Result<InlineResult> {
+    // 1. Find definition using SCIP
+    let definition = self.scip_query.find_definition(...)?;
+
+    // 2. Extract initializer from definition file (might be different file!)
+    let def_file_content = fs::read_to_string(&definition.file_path)?;
+    let var_decl = self.extract_variable_declaration(&definition.file_path, ...)?;
+
+    // 3. Find ALL references (across all files)
+    let references = self.scip_query.find_references(&var_name, true)?;
+    // NOTE: Don't filter by file_path anymore!
+
+    // 4. Group by file
+    let mut references_by_file: HashMap<PathBuf, Vec<Reference>> = ...;
+
+    // 5. For each file with references:
+    for (file_path, file_refs) in references_by_file {
+        if file_path == definition.file_path {
+            // Special handling: replace usages AND remove declaration
+        } else {
+            // Just replace usages
+            // Also: remove or update import statement using ImportAnalyzer
+        }
+    }
+
+    // 6. Remove export statement from definition file
+    // Use ImportAnalyzer to find and remove export
+}
+```
+
+**Why We Didn't Implement This Yet:**
+- Wanted to get single-file working first (MVP approach)
+- Cross-file adds significant complexity (~2-3x more code)
+- Import management is language-specific and error-prone
+- Single-file covers ~80% of common use cases in practice
+- Need more testing infrastructure before tackling multi-file transactions
+
+**Future Enhancement Priority:** Medium (after Move Symbol refactoring)
+
+**Estimated Effort:** 2-3 days implementation + 1 day testing
 
 ---
 
