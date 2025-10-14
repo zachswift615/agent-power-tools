@@ -83,16 +83,7 @@ impl<'a> VariableInliner<'a> {
 
     /// Perform the inline operation
     pub fn inline(&self, options: InlineOptions) -> Result<InlineResult> {
-        // Step 1: Find the variable definition using SCIP (to get proper symbol)
-        let definition = self
-            .scip_query
-            .find_definition(&options.file_path, options.line, options.column)?
-            .ok_or_else(|| anyhow::anyhow!("No symbol found at the specified location"))?;
-
-        // Step 2: Extract symbol name from location
-        let var_name = self.extract_symbol_name(&definition)?;
-
-        // Step 3: Extract variable declaration using tree-sitter
+        // Extract variable declaration using tree-sitter
         let file_content = fs::read_to_string(&options.file_path)
             .with_context(|| format!("Failed to read file: {}", options.file_path.display()))?;
 
@@ -104,25 +95,18 @@ impl<'a> VariableInliner<'a> {
         )?;
 
         // Set the actual file path
-        var_decl.location.file_path = definition.file_path.clone();
+        var_decl.location.file_path = options.file_path.clone();
 
         // Step 4: Safety validations
         self.validate_can_inline(&var_decl)?;
 
-        // Step 5: Find all references to this variable using the SCIP symbol
-        let references = self
-            .scip_query
-            .find_references(&var_name, true)?; // Include declarations, we'll filter
-
-        // Filter to only references after the declaration (scope-aware), excluding the declaration itself
-        let usages: Vec<Reference> = references
-            .into_iter()
-            .filter(|r| {
-                // Same file AND after the declaration (but not the declaration line/column itself)
-                r.location.file_path == var_decl.location.file_path
-                    && r.location.line > var_decl.location.line
-            })
-            .collect();
+        // Step 5: Find all references to this variable using tree-sitter
+        // (More reliable than SCIP for function-local variables)
+        let usages = self.find_variable_references_tree_sitter(
+            &options.file_path,
+            &var_decl.name,
+            var_decl.location.line,
+        )?;
 
         if usages.is_empty() {
             anyhow::bail!(
@@ -172,14 +156,6 @@ impl<'a> VariableInliner<'a> {
 
     /// Generate a preview of the inline operation
     pub fn preview(&self, options: InlineOptions) -> Result<RefactoringSummary> {
-        // Find the variable definition using SCIP
-        let definition = self
-            .scip_query
-            .find_definition(&options.file_path, options.line, options.column)?
-            .ok_or_else(|| anyhow::anyhow!("No symbol found at the specified location"))?;
-
-        let var_name = self.extract_symbol_name(&definition)?;
-
         let file_content = fs::read_to_string(&options.file_path)
             .with_context(|| format!("Failed to read file: {}", options.file_path.display()))?;
 
@@ -191,21 +167,16 @@ impl<'a> VariableInliner<'a> {
         )?;
 
         // Set the actual file path
-        var_decl.location.file_path = definition.file_path.clone();
+        var_decl.location.file_path = options.file_path.clone();
 
         self.validate_can_inline(&var_decl)?;
 
-        let references = self
-            .scip_query
-            .find_references(&var_name, true)?; // Include declarations, we'll filter
-
-        let usages: Vec<Reference> = references
-            .into_iter()
-            .filter(|r| {
-                r.location.file_path == var_decl.location.file_path
-                    && r.location.line > var_decl.location.line
-            })
-            .collect();
+        // Find all references using tree-sitter (more reliable than SCIP for local variables)
+        let usages = self.find_variable_references_tree_sitter(
+            &options.file_path,
+            &var_decl.name,
+            var_decl.location.line,
+        )?;
 
         if usages.is_empty() {
             anyhow::bail!(
@@ -864,5 +835,180 @@ impl<'a> VariableInliner<'a> {
         // Check for binary operators (simple heuristic)
         let operators = ["+", "-", "*", "/", "%", "&&", "||", "==", "!=", "<", ">", "<=", ">="];
         operators.iter().any(|op| initializer.contains(op))
+    }
+
+    /// Find all references to a variable using tree-sitter AST traversal
+    /// This is more reliable than SCIP for local variables, which SCIP indexers often skip
+    fn find_variable_references_tree_sitter(
+        &self,
+        file_path: &PathBuf,
+        var_name: &str,
+        declaration_line: usize,
+    ) -> Result<Vec<Reference>> {
+        let content = fs::read_to_string(file_path)
+            .with_context(|| format!("Failed to read file: {}", file_path.display()))?;
+
+        // Determine file extension to choose parser
+        let extension = file_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| anyhow::anyhow!("No file extension found"))?;
+
+        let mut references = Vec::new();
+
+        match extension {
+            "ts" | "tsx" | "js" | "jsx" => {
+                references = self.find_typescript_identifiers(&content, var_name, declaration_line, file_path)?;
+            }
+            "rs" => {
+                references = self.find_rust_identifiers(&content, var_name, declaration_line, file_path)?;
+            }
+            "py" => {
+                references = self.find_python_identifiers(&content, var_name, declaration_line, file_path)?;
+            }
+            "cpp" | "cc" | "cxx" | "hpp" | "h" => {
+                references = self.find_cpp_identifiers(&content, var_name, declaration_line, file_path)?;
+            }
+            _ => anyhow::bail!("Unsupported file extension: {}", extension),
+        }
+
+        Ok(references)
+    }
+
+    /// Find TypeScript/JavaScript identifiers matching var_name
+    fn find_typescript_identifiers(
+        &self,
+        content: &str,
+        var_name: &str,
+        declaration_line: usize,
+        file_path: &PathBuf,
+    ) -> Result<Vec<Reference>> {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into())
+            .context("Failed to load TypeScript grammar")?;
+
+        let tree = parser
+            .parse(content, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse TypeScript code"))?;
+
+        let root_node = tree.root_node();
+        let mut references = Vec::new();
+
+        self.collect_identifiers(root_node, content, var_name, declaration_line, file_path, &mut references);
+
+        Ok(references)
+    }
+
+    /// Find Rust identifiers matching var_name
+    fn find_rust_identifiers(
+        &self,
+        content: &str,
+        var_name: &str,
+        declaration_line: usize,
+        file_path: &PathBuf,
+    ) -> Result<Vec<Reference>> {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_rust::LANGUAGE.into())
+            .context("Failed to load Rust grammar")?;
+
+        let tree = parser
+            .parse(content, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse Rust code"))?;
+
+        let root_node = tree.root_node();
+        let mut references = Vec::new();
+
+        self.collect_identifiers(root_node, content, var_name, declaration_line, file_path, &mut references);
+
+        Ok(references)
+    }
+
+    /// Find Python identifiers matching var_name
+    fn find_python_identifiers(
+        &self,
+        content: &str,
+        var_name: &str,
+        declaration_line: usize,
+        file_path: &PathBuf,
+    ) -> Result<Vec<Reference>> {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_python::LANGUAGE.into())
+            .context("Failed to load Python grammar")?;
+
+        let tree = parser
+            .parse(content, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse Python code"))?;
+
+        let root_node = tree.root_node();
+        let mut references = Vec::new();
+
+        self.collect_identifiers(root_node, content, var_name, declaration_line, file_path, &mut references);
+
+        Ok(references)
+    }
+
+    /// Find C++ identifiers matching var_name
+    fn find_cpp_identifiers(
+        &self,
+        content: &str,
+        var_name: &str,
+        declaration_line: usize,
+        file_path: &PathBuf,
+    ) -> Result<Vec<Reference>> {
+        let mut parser = Parser::new();
+        parser
+            .set_language(&tree_sitter_cpp::LANGUAGE.into())
+            .context("Failed to load C++ grammar")?;
+
+        let tree = parser
+            .parse(content, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse C++ code"))?;
+
+        let root_node = tree.root_node();
+        let mut references = Vec::new();
+
+        self.collect_identifiers(root_node, content, var_name, declaration_line, file_path, &mut references);
+
+        Ok(references)
+    }
+
+    /// Recursively collect all identifier nodes matching var_name
+    fn collect_identifiers(
+        &self,
+        node: Node,
+        content: &str,
+        var_name: &str,
+        declaration_line: usize,
+        file_path: &PathBuf,
+        references: &mut Vec<Reference>,
+    ) {
+        // Check if this node is an identifier matching our variable name
+        if node.kind() == "identifier" {
+            let node_text = &content[node.byte_range()];
+            let node_line = node.start_position().row + 1; // tree-sitter uses 0-indexed rows
+
+            if node_text == var_name && node_line > declaration_line {
+                references.push(Reference {
+                    location: Location {
+                        file_path: file_path.clone(),
+                        line: node_line,
+                        column: node.start_position().column + 1, // tree-sitter uses 0-indexed columns
+                        end_line: Some(node.end_position().row + 1),
+                        end_column: Some(node.end_position().column + 1),
+                    },
+                    kind: crate::core::ReferenceKind::Reference,
+                    context: None,
+                });
+            }
+        }
+
+        // Recursively check children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.collect_identifiers(child, content, var_name, declaration_line, file_path, references);
+        }
     }
 }

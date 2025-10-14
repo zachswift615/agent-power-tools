@@ -37,12 +37,24 @@ impl ScipQuery {
     pub fn find_references(&self, symbol_name: &str, include_declarations: bool) -> Result<Vec<Reference>> {
         let mut references = Vec::new();
 
+        // DEBUG: Log document count
+        eprintln!("[DEBUG] Total documents in index: {}", self.index.documents.len());
+        let test_docs: Vec<_> = self.index.documents.iter()
+            .filter(|d| d.relative_path.contains("test"))
+            .collect();
+        eprintln!("[DEBUG] Test documents in index: {}", test_docs.len());
+
         // Search through all documents
         for document in &self.index.documents {
             for occurrence in &document.occurrences {
                 if let Some(occ_symbol) = &occurrence.symbol {
                     // Check if this symbol matches what we're looking for
                     if self.symbol_matches(occ_symbol, symbol_name) {
+                        // DEBUG: Log matches from test files
+                        if document.relative_path.contains("test") {
+                            eprintln!("[DEBUG] Found match in test file: {} at line {:?}", document.relative_path, occurrence.range);
+                        }
+
                         // Check if we should include this occurrence
                         if !include_declarations && self.is_definition(occurrence) {
                             continue;

@@ -154,12 +154,38 @@ impl ScipQuery {
 
         const DEFINITION_ROLE: i32 = 1;
 
+        // DEBUG: Log index and document counts
+        eprintln!("[DEBUG] Searching {} indexes", self.indexes.len());
+        for (i, index) in self.indexes.iter().enumerate() {
+            let total_docs = index.documents.len();
+            let test_docs = index.documents.iter().filter(|d| d.relative_path.contains("test")).count();
+            eprintln!("[DEBUG] Index {}: {} total docs, {} test docs", i, total_docs, test_docs);
+        }
+
         // Search across all indexes
+        let mut test_symbols_checked = 0;
         for index in &self.indexes {
             for document in &index.documents {
+                let is_test_file = document.relative_path.contains("test");
                 for occurrence in &document.occurrences {
+                    // DEBUG: Count test file occurrences and sample symbols
+                    if is_test_file {
+                        test_symbols_checked += 1;
+                        if test_symbols_checked <= 5 {
+                            eprintln!("[DEBUG] Test file symbol sample: {}", occurrence.symbol);
+                        }
+                    }
+
                     // Simple substring match for now - could be enhanced to parse SCIP symbols
                     if occurrence.symbol.contains(symbol_name) {
+                        // DEBUG: Log ALL Factory matches to see what they look like
+                        eprintln!("[DEBUG] Factory match in {}: symbol={}", document.relative_path, occurrence.symbol);
+
+                        // DEBUG: Log matches from test files
+                        if is_test_file {
+                            eprintln!("[DEBUG] *** Match in test file: {} symbol: {}", document.relative_path, occurrence.symbol);
+                        }
+
                         let is_definition = occurrence.symbol_roles & DEFINITION_ROLE != 0;
 
                         if !is_definition || include_declarations {
@@ -181,6 +207,7 @@ impl ScipQuery {
                 }
             }
         }
+        eprintln!("[DEBUG] Total test file occurrences checked: {}", test_symbols_checked);
 
         Ok(references)
     }
