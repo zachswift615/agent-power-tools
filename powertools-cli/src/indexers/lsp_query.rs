@@ -380,6 +380,7 @@ impl LspQuery {
     }
 
     /// Gracefully shutdown the LSP server
+    #[allow(dead_code)]
     pub fn shutdown(mut self) -> Result<()> {
         self.client.shutdown()
     }

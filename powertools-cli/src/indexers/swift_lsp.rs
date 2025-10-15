@@ -120,6 +120,7 @@ impl SwiftLsp {
     ///
     /// # Returns
     /// Version string if available, error otherwise
+    #[allow(dead_code)]
     pub fn version() -> Result<String> {
         let lsp_path = Self::check_available()?;
 

@@ -7,7 +7,6 @@ pub mod swift_lsp;
 
 pub use scip_indexer::ScipIndexer;
 pub use scip_query_simple::ScipQuery;
-pub use lsp_client::LspClient;
 pub use lsp_query::LspQuery;
 pub use unified_query::UnifiedQuery;
 pub use swift_lsp::SwiftLsp;

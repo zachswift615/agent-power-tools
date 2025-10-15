@@ -5,19 +5,20 @@
 ///! differences between the two approaches and provides a consistent API.
 
 use anyhow::{Context, Result};
-use lsp_types::WorkspaceEdit;
 use std::path::{Path, PathBuf};
 
 use crate::core::Language;
-use crate::indexers::{ScipQuery, SwiftLsp};
+use crate::indexers::SwiftLsp;
 use crate::indexers::lsp_query::apply_workspace_edit;
 
 /// Unified refactoring API that routes to SCIP or LSP based on language
+#[allow(dead_code)]
 pub struct UnifiedRefactor {
     project_root: PathBuf,
 }
 
 /// Result of a refactoring operation
+#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RefactorResult {
     pub success: bool,
@@ -29,6 +30,7 @@ pub struct RefactorResult {
 }
 
 /// Preview of a refactoring operation (before applying)
+#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RefactorPreview {
     pub files_to_modify: usize,
@@ -38,12 +40,14 @@ pub struct RefactorPreview {
 }
 
 /// Description of changes to a single file
+#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FileChange {
     pub file_path: PathBuf,
     pub edits_count: usize,
 }
 
+#[allow(dead_code)]
 impl UnifiedRefactor {
     /// Create a new unified refactor instance
     ///

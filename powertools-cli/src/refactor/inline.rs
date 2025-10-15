@@ -59,7 +59,9 @@ struct VariableDeclaration {
     location: Location,
 
     /// Start and end byte positions of the entire declaration statement
+    #[allow(dead_code)] // Reserved for potential multi-line declaration removal
     declaration_start_byte: usize,
+    #[allow(dead_code)] // Reserved for potential multi-line declaration removal
     declaration_end_byte: usize,
 
     /// Whether the variable is reassigned (mutable)
@@ -68,6 +70,7 @@ struct VariableDeclaration {
 
 /// Inline a variable across the codebase
 pub struct VariableInliner<'a> {
+    #[allow(dead_code)] // Reserved for future SCIP-based reference finding
     scip_query: &'a ScipQuery,
     #[allow(dead_code)] // Reserved for future use in path resolution
     project_root: PathBuf,
@@ -634,6 +637,7 @@ impl<'a> VariableInliner<'a> {
     }
 
     /// Extract symbol name from location
+    #[allow(dead_code)]
     fn extract_symbol_name(&self, location: &Location) -> Result<String> {
         let content = fs::read_to_string(&location.file_path)
             .with_context(|| format!("Failed to read file: {}", location.file_path.display()))?;
@@ -854,25 +858,21 @@ impl<'a> VariableInliner<'a> {
             .and_then(|s| s.to_str())
             .ok_or_else(|| anyhow::anyhow!("No file extension found"))?;
 
-        let mut references = Vec::new();
-
         match extension {
             "ts" | "tsx" | "js" | "jsx" => {
-                references = self.find_typescript_identifiers(&content, var_name, declaration_line, file_path)?;
+                self.find_typescript_identifiers(&content, var_name, declaration_line, file_path)
             }
             "rs" => {
-                references = self.find_rust_identifiers(&content, var_name, declaration_line, file_path)?;
+                self.find_rust_identifiers(&content, var_name, declaration_line, file_path)
             }
             "py" => {
-                references = self.find_python_identifiers(&content, var_name, declaration_line, file_path)?;
+                self.find_python_identifiers(&content, var_name, declaration_line, file_path)
             }
             "cpp" | "cc" | "cxx" | "hpp" | "h" => {
-                references = self.find_cpp_identifiers(&content, var_name, declaration_line, file_path)?;
+                self.find_cpp_identifiers(&content, var_name, declaration_line, file_path)
             }
             _ => anyhow::bail!("Unsupported file extension: {}", extension),
         }
-
-        Ok(references)
     }
 
     /// Find TypeScript/JavaScript identifiers matching var_name

@@ -8,6 +8,7 @@ use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Errors that can occur when communicating with an LSP server
+#[allow(dead_code)]
 #[derive(Debug, thiserror::Error)]
 pub enum LspError {
     #[error("LSP server not running")]
@@ -45,6 +46,7 @@ struct JsonRpcRequest {
 }
 
 /// JSON-RPC 2.0 response
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct JsonRpcResponse {
     jsonrpc: String,
@@ -56,6 +58,7 @@ struct JsonRpcResponse {
 }
 
 /// JSON-RPC 2.0 error
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 struct JsonRpcError {
     code: i32,
@@ -73,6 +76,7 @@ struct JsonRpcNotification {
 }
 
 /// LSP client that communicates with a language server via JSON-RPC over stdio
+#[allow(dead_code)]
 pub struct LspClient {
     process: Child,
     stdin: BufWriter<ChildStdin>,
@@ -82,6 +86,7 @@ pub struct LspClient {
     root_uri: Uri,
 }
 
+#[allow(dead_code)]
 impl LspClient {
     /// Start an LSP server process and initialize it
     ///
@@ -136,6 +141,7 @@ impl LspClient {
     }
 
     /// Initialize the LSP server with project information
+    #[allow(deprecated)]
     fn initialize(&mut self, root_uri: &Uri) -> Result<()> {
         let init_params = InitializeParams {
             process_id: Some(std::process::id()),

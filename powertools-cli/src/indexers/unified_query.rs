@@ -29,6 +29,7 @@ pub enum UnifiedQuery {
     Lsp(LspQuery),
 }
 
+#[allow(dead_code)]
 impl UnifiedQuery {
     /// Create a unified query from a project root
     ///
@@ -136,7 +137,7 @@ impl UnifiedQuery {
                 // This is less efficient than direct symbol search, but provides a unified API
 
                 // Find what symbol is at this position
-                if let Some(def_location) = scip.find_definition(file_path, line, column)? {
+                if let Some(_def_location) = scip.find_definition(file_path, line, column)? {
                     // Extract symbol name from the definition location
                     // For now, we'll use a simplified approach: read the file and extract the text
                     // In a production implementation, we'd use SCIP's symbol information directly

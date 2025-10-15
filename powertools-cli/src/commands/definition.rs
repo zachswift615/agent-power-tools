@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::path::PathBuf;
 use crate::core::{output::OutputWriter, location::parse_location, Symbol, SymbolKind, Location, Language};
-use crate::indexers::{ScipQuery, SwiftLsp, UnifiedQuery};
+use crate::indexers::{SwiftLsp, UnifiedQuery};
 
 /// Find definition and return it (for MCP/API use)
 pub async fn find_definition(
