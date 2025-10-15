@@ -124,6 +124,11 @@ impl QueryPatterns {
                 (method_definition)
             ] @func",
             Language::Python => "(function_definition) @func",
+            Language::Swift => "[
+                (function_declaration)
+                (init_declaration)
+                (deinit_declaration)
+            ] @func",
             Language::Go => "[
                 (function_declaration)
                 (method_declaration)
@@ -142,6 +147,10 @@ impl QueryPatterns {
             ] @type",
             Language::TypeScript | Language::JavaScript => "(class_declaration) @class",
             Language::Python => "(class_definition) @class",
+            Language::Swift => "[
+                (class_declaration)
+                (protocol_declaration)
+            ] @type",
             Language::Go => "(type_declaration) @type",
             Language::Java => "[
                 (class_declaration)
@@ -162,6 +171,7 @@ impl QueryPatterns {
                 (import_statement)
                 (import_from_statement)
             ] @import",
+            Language::Swift => "(import_declaration) @import",
             Language::Go => "(import_declaration) @import",
             Language::Java => "(import_declaration) @import",
             _ => "",

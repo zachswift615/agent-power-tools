@@ -1,6 +1,6 @@
 [package]
 name = "powertools"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 authors = ["Agent Power Tools Team"]
 description = "Code indexing and navigation tools for AI agents"
@@ -25,6 +25,7 @@ tree-sitter-javascript = "0.23"
 tree-sitter-go = "0.23"
 tree-sitter-java = "0.23"
 tree-sitter-cpp = "0.23"
+tree-sitter-swift = "0.7"
 
 # Async runtime
 tokio = { version = "1.40", features = ["full"] }
@@ -64,6 +65,7 @@ schemars = "1.0"
 # LSP support
 lsp-types = "0.97"
 lsp-server = "0.7"
+url = "2.5"  # URL parsing (used by lsp-types)
 
 # Parallel processing
 rayon = "1.10"

@@ -4,6 +4,7 @@ mod preview;
 mod rename;
 mod replacer;
 mod transaction;
+pub mod unified_refactor;
 
 pub use inline::{InlineOptions, VariableInliner};
 pub use preview::generate_preview;
@@ -12,6 +13,7 @@ pub use replacer::BatchReplacer;
 #[allow(unused_imports)]
 pub use replacer::ReplacementMode;
 pub use transaction::TransactionMode;
+pub use unified_refactor::{UnifiedRefactor, RefactorResult, RefactorPreview, FileChange};
 
 use std::path::PathBuf;
 
