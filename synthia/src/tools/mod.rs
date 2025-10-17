@@ -3,6 +3,7 @@ pub mod edit;
 pub mod git;
 pub mod glob;
 pub mod grep;
+pub mod powertools;
 pub mod read;
 pub mod registry;
 pub mod webfetch;
