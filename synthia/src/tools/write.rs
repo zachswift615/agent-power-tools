@@ -110,4 +110,35 @@ mod tests {
         // Cleanup
         fs::remove_dir_all("/tmp/synthia_test_nested").await.unwrap();
     }
+
+    #[tokio::test]
+    async fn test_write_overwrites_existing_file() {
+        let temp_path = "/tmp/synthia_test_overwrite.txt";
+
+        // Create file with initial content
+        fs::write(temp_path, "initial content").await.unwrap();
+
+        // Verify initial content
+        let initial = fs::read_to_string(temp_path).await.unwrap();
+        assert_eq!(initial, "initial content");
+
+        // Overwrite with new content
+        let tool = WriteTool::new();
+        let result = tool
+            .execute(serde_json::json!({
+                "file_path": temp_path,
+                "content": "new content"
+            }))
+            .await
+            .unwrap();
+
+        assert!(!result.is_error);
+
+        // Verify content was overwritten
+        let content = fs::read_to_string(temp_path).await.unwrap();
+        assert_eq!(content, "new content");
+
+        // Cleanup
+        fs::remove_file(temp_path).await.unwrap();
+    }
 }
