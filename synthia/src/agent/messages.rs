@@ -1,5 +1,3 @@
-use crate::types::Message;
-
 #[derive(Debug, Clone)]
 pub enum Command {
     SendMessage(String),

@@ -74,6 +74,12 @@ impl AgentActor {
                 )
                 .await?;
 
+            // Add the full assistant response as a single message
+            self.conversation.push(Message {
+                role: Role::Assistant,
+                content: response.content.clone(),
+            });
+
             // Process response content
             for block in &response.content {
                 match block {
@@ -102,10 +108,6 @@ impl AgentActor {
 
                         // Add tool result to conversation
                         self.conversation.push(Message {
-                            role: Role::Assistant,
-                            content: vec![block.clone()],
-                        });
-                        self.conversation.push(Message {
                             role: Role::User,
                             content: vec![ContentBlock::ToolResult {
                                 tool_use_id: id.clone(),
@@ -115,22 +117,6 @@ impl AgentActor {
                         });
                     }
                     _ => {}
-                }
-            }
-
-            // Add assistant message to conversation
-            if !response.content.is_empty() {
-                let text_blocks: Vec<_> = response
-                    .content
-                    .iter()
-                    .filter(|b| matches!(b, ContentBlock::Text { .. }))
-                    .cloned()
-                    .collect();
-                if !text_blocks.is_empty() {
-                    self.conversation.push(Message {
-                        role: Role::Assistant,
-                        content: text_blocks,
-                    });
                 }
             }
 
