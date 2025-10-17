@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::Value;
 use std::time::Duration;
+use url::Url;
 
 pub struct WebFetchTool {
     client: reqwest::Client,
@@ -27,7 +28,12 @@ impl WebFetchTool {
                 for (key, value) in obj {
                     let header_name = HeaderName::try_from(key.as_str())
                         .map_err(|e| anyhow::anyhow!("Invalid header name '{}': {}", key, e))?;
-                    let header_value = HeaderValue::from_str(value.as_str().unwrap_or(""))
+
+                    // Fix: Properly check if value is a string before converting
+                    let value_str = value.as_str()
+                        .ok_or_else(|| anyhow::anyhow!("Header value for '{}' must be a string, got: {:?}", key, value))?;
+
+                    let header_value = HeaderValue::from_str(value_str)
                         .map_err(|e| anyhow::anyhow!("Invalid header value for '{}': {}", key, e))?;
                     header_map.insert(header_name, header_value);
                 }
@@ -63,6 +69,10 @@ impl Tool for WebFetchTool {
                 "timeout_seconds": {
                     "type": "integer",
                     "description": "Request timeout in seconds (default: 30)"
+                },
+                "max_size_mb": {
+                    "type": "integer",
+                    "description": "Maximum response size in MB (default: 10)"
                 }
             },
             "required": ["url"]
@@ -70,23 +80,36 @@ impl Tool for WebFetchTool {
     }
 
     async fn execute(&self, params: Value) -> Result<ToolResult> {
-        let url = params["url"]
+        let url_str = params["url"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'url' parameter"))?;
 
-        // Validate URL scheme
-        if !url.starts_with("http://") && !url.starts_with("https://") {
+        // Fix: Parse URL to validate format and check scheme
+        let parsed_url = match Url::parse(url_str) {
+            Ok(url) => url,
+            Err(e) => {
+                return Ok(ToolResult {
+                    content: format!("Malformed URL: {}", e),
+                    is_error: true,
+                });
+            }
+        };
+
+        // Validate URL scheme using parsed URL
+        if parsed_url.scheme() != "http" && parsed_url.scheme() != "https" {
             return Ok(ToolResult {
-                content: format!("Invalid URL: must start with http:// or https://"),
+                content: format!("Invalid URL scheme '{}': must be http or https", parsed_url.scheme()),
                 is_error: true,
             });
         }
 
         let timeout_seconds = params["timeout_seconds"].as_u64().unwrap_or(30);
+        let max_size_mb = params["max_size_mb"].as_u64().unwrap_or(10);
+        let max_size_bytes = max_size_mb * 1024 * 1024; // Convert MB to bytes
         let headers = self.parse_headers(params.get("headers"))?;
 
-        // Build request
-        let mut request = self.client.get(url);
+        // Build request (use validated URL string)
+        let mut request = self.client.get(url_str);
 
         // Add custom headers
         if !headers.is_empty() {
@@ -125,9 +148,36 @@ impl Tool for WebFetchTool {
             });
         }
 
-        // Get response body
+        // Fix: Check Content-Length header before downloading
+        if let Some(content_length) = response.content_length() {
+            if content_length > max_size_bytes {
+                return Ok(ToolResult {
+                    content: format!(
+                        "Response too large: {} MB exceeds maximum of {} MB",
+                        content_length / (1024 * 1024),
+                        max_size_mb
+                    ),
+                    is_error: true,
+                });
+            }
+        }
+
+        // Get response body with size limit
         let body = match response.text().await {
-            Ok(text) => text,
+            Ok(text) => {
+                // Check actual size after download (in case Content-Length was missing)
+                if text.len() as u64 > max_size_bytes {
+                    return Ok(ToolResult {
+                        content: format!(
+                            "Response too large: {} MB exceeds maximum of {} MB",
+                            text.len() / (1024 * 1024),
+                            max_size_mb
+                        ),
+                        is_error: true,
+                    });
+                }
+                text
+            }
             Err(e) => {
                 return Ok(ToolResult {
                     content: format!("Failed to read response body: {}", e),
@@ -310,5 +360,100 @@ mod tests {
         mock.assert_async().await;
         assert!(!result.is_error);
         assert_eq!(result.content, "response");
+    }
+
+    #[tokio::test]
+    async fn test_webfetch_non_string_header_values() {
+        let tool = WebFetchTool::new();
+        let result = tool
+            .execute(serde_json::json!({
+                "url": "http://example.com",
+                "headers": {
+                    "X-Custom-Header": 123  // Non-string value
+                }
+            }))
+            .await;
+
+        // Should return an error because header value is not a string
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("must be a string"));
+    }
+
+    #[tokio::test]
+    async fn test_webfetch_malformed_url() {
+        let tool = WebFetchTool::new();
+
+        // Test various malformed URLs
+        let malformed_urls = vec![
+            "not-a-url",
+            "htp://missing-t.com",
+            "://no-scheme.com",
+            "http://",
+            "",
+        ];
+
+        for url in malformed_urls {
+            let result = tool
+                .execute(serde_json::json!({
+                    "url": url
+                }))
+                .await
+                .unwrap();
+
+            assert!(result.is_error, "Expected error for malformed URL: {}", url);
+            assert!(result.content.contains("Malformed URL") || result.content.contains("Invalid URL"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_webfetch_large_response() {
+        let mut server = mockito::Server::new_async().await;
+
+        // Create a large response body (2MB)
+        let large_body = "x".repeat(2 * 1024 * 1024);
+
+        let mock = server
+            .mock("GET", "/large")
+            .with_status(200)
+            .with_header("Content-Length", &(large_body.len().to_string()))
+            .with_body(large_body.clone())
+            .create_async()
+            .await;
+
+        let tool = WebFetchTool::new();
+
+        // Test with default max_size (10MB) - should succeed
+        let result = tool
+            .execute(serde_json::json!({
+                "url": format!("{}/large", server.url())
+            }))
+            .await
+            .unwrap();
+
+        mock.assert_async().await;
+        assert!(!result.is_error);
+        assert_eq!(result.content.len(), 2 * 1024 * 1024);
+
+        // Test with max_size of 1MB - should fail
+        let mock2 = server
+            .mock("GET", "/large2")
+            .with_status(200)
+            .with_header("Content-Length", &(large_body.len().to_string()))
+            .with_body(large_body)
+            .create_async()
+            .await;
+
+        let result = tool
+            .execute(serde_json::json!({
+                "url": format!("{}/large2", server.url()),
+                "max_size_mb": 1
+            }))
+            .await
+            .unwrap();
+
+        mock2.assert_async().await;
+        assert!(result.is_error);
+        assert!(result.content.contains("Response too large") || result.content.contains("exceeds maximum"));
     }
 }
