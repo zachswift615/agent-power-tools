@@ -153,12 +153,22 @@ impl App {
     }
 
     fn render(&self, f: &mut ratatui::Frame) {
+        // Calculate dynamic height for input based on text length
+        // Account for block borders (2 lines) and calculate wrapped lines
+        let input_width = f.area().width.saturating_sub(4); // Subtract borders and padding
+        let input_lines = if self.input.is_empty() {
+            1
+        } else {
+            (self.input.len() as u16 / input_width.max(1)) + 1
+        };
+        let input_height = (input_lines + 2).min(10); // +2 for borders, max 10 lines
+
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(3),
                 Constraint::Min(0),
-                Constraint::Length(3),
+                Constraint::Length(input_height),
             ])
             .split(f.area());
 
@@ -212,9 +222,10 @@ impl App {
             .scroll((self.scroll_offset, 0));
         f.render_widget(conversation, chunks[1]);
 
-        // Input
+        // Input with wrapping support
         let input = Paragraph::new(self.input.as_str())
-            .block(Block::default().borders(Borders::ALL).title("Input"));
+            .block(Block::default().borders(Borders::ALL).title("Input"))
+            .wrap(Wrap { trim: false });
         f.render_widget(input, chunks[2]);
     }
 }
