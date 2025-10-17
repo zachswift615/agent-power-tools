@@ -1,0 +1,63 @@
+# Synthia Configuration File
+#
+# This is an example configuration file for Synthia.
+# Copy this file to one of the following locations:
+#   1. ~/.config/synthia/config.toml (recommended for user-wide settings)
+#   2. ./synthia.toml (project-specific settings in current directory)
+#
+# Synthia will check these locations in order and use the first one found.
+# If no config file is found, sensible defaults will be used.
+
+# LLM Provider Configuration
+[llm]
+# Base URL for the LLM API
+# For local LM Studio: "http://localhost:1234/v1"
+# For OpenAI: "https://api.openai.com/v1"
+# For other OpenAI-compatible providers, adjust accordingly
+api_base = "http://localhost:1234/v1"
+
+# Optional API key for authentication
+# Leave commented out or set to empty string if not needed (e.g., for local LM Studio)
+# api_key = "your-api-key-here"
+
+# Model name to use
+# For local models: use the model name as shown in LM Studio
+# For OpenAI: "gpt-4", "gpt-3.5-turbo", etc.
+model = "qwen2.5-coder-7b-instruct"
+
+# Temperature for generation (0.0 to 1.0)
+# Lower values = more focused and deterministic
+# Higher values = more creative and random
+temperature = 0.7
+
+# Maximum tokens to generate (optional)
+# Set to control response length
+# Comment out or set to null for no limit
+max_tokens = 4096
+
+# Timeout Configuration
+[timeouts]
+# Timeout for bash commands in seconds
+# Increase if you run long-running commands
+bash_timeout = 120
+
+# Timeout for git operations in seconds
+# Increase for large repositories or slow networks
+git_timeout = 120
+
+# Timeout for workshop commands in seconds
+# Usually fast, but increase if using remote workshop storage
+workshop_timeout = 30
+
+# Timeout for powertools operations in seconds
+# Increase for large codebases or complex queries
+powertools_timeout = 60
+
+# UI Configuration
+[ui]
+# Enable syntax highlighting in markdown code blocks
+syntax_highlighting = true
+
+# Maximum lines to show in tool output
+# Longer outputs will be truncated to prevent UI clutter
+max_output_lines = 1000
