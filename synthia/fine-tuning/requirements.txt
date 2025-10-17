@@ -24,7 +24,7 @@ trl>=0.8.0                    # Transformer Reinforcement Learning (SFTTrainer)
 
 # Unsloth - Fast and memory-efficient fine-tuning
 # Provides 2x faster training with 70% less memory usage
-unsloth[cu121-torch250]>=2024.3  # Unsloth for CUDA 12.1 and PyTorch 2.5+
+unsloth>=2024.3  # Unsloth for CUDA 12.1 - let pip resolve compatible versions
 
 # Quantization and Optimization
 bitsandbytes>=0.42.0          # 4-bit/8-bit quantization, 8-bit optimizers
