@@ -1,3 +1,4 @@
+mod llm;
 mod tools;
 mod types;
 
