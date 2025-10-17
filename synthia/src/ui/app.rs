@@ -174,8 +174,9 @@ impl App {
     }
 
     fn auto_scroll_to_bottom(&mut self) {
-        // Enable auto-scroll mode - actual scroll position calculated in render()
+        // Enable auto-scroll mode and reset offset to ensure we're at the bottom
         self.auto_scroll_enabled = true;
+        self.scroll_offset = 0;
     }
 
     async fn handle_input(
