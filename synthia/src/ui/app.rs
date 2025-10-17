@@ -1,7 +1,7 @@
 use crate::agent::messages::{Command, UIUpdate};
 use crate::ui::markdown::render_markdown;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers},
+    event::{self, Event, KeyCode, KeyModifiers, MouseEvent, MouseEventKind, EnableMouseCapture, DisableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -60,7 +60,7 @@ impl App {
     pub async fn run(&mut self) -> anyhow::Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen)?;
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
 
@@ -75,15 +75,21 @@ impl App {
 
             // Handle input
             if event::poll(std::time::Duration::from_millis(100))? {
-                if let Event::Key(key) = event::read()? {
-                    self.handle_input(key).await?;
+                match event::read()? {
+                    Event::Key(key) => {
+                        self.handle_input(key).await?;
+                    }
+                    Event::Mouse(mouse) => {
+                        self.handle_mouse_input(mouse);
+                    }
+                    _ => {}
                 }
             }
         }
 
         // Cleanup
         disable_raw_mode()?;
-        execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+        execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
         terminal.show_cursor()?;
 
         Ok(())
@@ -261,6 +267,28 @@ impl App {
         Ok(())
     }
 
+    fn handle_mouse_input(&mut self, mouse: MouseEvent) {
+        // Handle mouse scroll events for message history navigation
+        match mouse.kind {
+            MouseEventKind::ScrollUp => {
+                // Scroll up in message history (3 lines per scroll event for smooth scrolling)
+                self.auto_scroll_enabled = false;
+                self.scroll_offset = self.scroll_offset.saturating_add(3);
+            }
+            MouseEventKind::ScrollDown => {
+                // Scroll down in message history (3 lines per scroll event)
+                self.scroll_offset = self.scroll_offset.saturating_sub(3);
+                // Re-enable auto-scroll if we've scrolled back to bottom (offset = 0)
+                if self.scroll_offset == 0 {
+                    self.auto_scroll_enabled = true;
+                }
+            }
+            _ => {
+                // Ignore other mouse events (clicks, drag, etc.)
+            }
+        }
+    }
+
     fn render(&self, f: &mut ratatui::Frame) {
         // Calculate dynamic height for input based on text length
         // Account for block borders (2 lines) and calculate wrapped lines
@@ -288,7 +316,7 @@ impl App {
             String::new()
         };
         let status_text = format!(
-            "Synthia v0.1.0 (↑/↓ scroll | ^S save | ^N new | ^L load){}",
+            "Synthia v0.1.0 (↑/↓/mouse scroll | ^S save | ^N new | ^L load){}",
             session_info
         );
         let status = Paragraph::new(status_text)
@@ -598,5 +626,106 @@ mod tests {
         // Scroll position should not change
         assert_eq!(app.scroll_offset, 10, "Typing should not affect scroll position");
         assert!(!app.auto_scroll_enabled, "Typing should not enable auto-scroll");
+    }
+
+    #[test]
+    fn test_mouse_scroll_up() {
+        use crossterm::event::{MouseEvent, MouseEventKind};
+
+        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
+        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
+        let mut app = App::new(cmd_tx, ui_rx);
+
+        // Initially auto-scroll is enabled
+        assert!(app.auto_scroll_enabled);
+        assert_eq!(app.scroll_offset, 0);
+
+        // Simulate mouse scroll up
+        let mouse_event = MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::empty(),
+        };
+        app.handle_mouse_input(mouse_event);
+
+        // Should disable auto-scroll and increase offset by 3
+        assert!(!app.auto_scroll_enabled, "Mouse scroll up should disable auto-scroll");
+        assert_eq!(app.scroll_offset, 3, "Mouse scroll up should increase offset by 3");
+    }
+
+    #[test]
+    fn test_mouse_scroll_down() {
+        use crossterm::event::{MouseEvent, MouseEventKind};
+
+        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
+        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
+        let mut app = App::new(cmd_tx, ui_rx);
+
+        // Set up initial state with scroll offset
+        app.auto_scroll_enabled = false;
+        app.scroll_offset = 10;
+
+        // Simulate mouse scroll down
+        let mouse_event = MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::empty(),
+        };
+        app.handle_mouse_input(mouse_event);
+
+        // Should decrease offset by 3
+        assert_eq!(app.scroll_offset, 7, "Mouse scroll down should decrease offset by 3");
+        assert!(!app.auto_scroll_enabled, "Should not enable auto-scroll yet");
+    }
+
+    #[test]
+    fn test_mouse_scroll_down_to_bottom() {
+        use crossterm::event::{MouseEvent, MouseEventKind};
+
+        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
+        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
+        let mut app = App::new(cmd_tx, ui_rx);
+
+        // Set up initial state with small scroll offset
+        app.auto_scroll_enabled = false;
+        app.scroll_offset = 2;
+
+        // Simulate mouse scroll down
+        let mouse_event = MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::empty(),
+        };
+        app.handle_mouse_input(mouse_event);
+
+        // Should reach offset 0 and re-enable auto-scroll
+        assert_eq!(app.scroll_offset, 0, "Should saturate at 0");
+        assert!(app.auto_scroll_enabled, "Should re-enable auto-scroll when reaching bottom");
+    }
+
+    #[test]
+    fn test_mouse_scroll_sensitivity() {
+        use crossterm::event::{MouseEvent, MouseEventKind};
+
+        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
+        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
+        let mut app = App::new(cmd_tx, ui_rx);
+
+        // Simulate 5 scroll up events
+        for _ in 0..5 {
+            let mouse_event = MouseEvent {
+                kind: MouseEventKind::ScrollUp,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::empty(),
+            };
+            app.handle_mouse_input(mouse_event);
+        }
+
+        // Should scroll up by 15 lines total (5 events * 3 lines/event)
+        assert_eq!(app.scroll_offset, 15, "5 scroll events should move 15 lines");
     }
 }
