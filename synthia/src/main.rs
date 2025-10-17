@@ -8,7 +8,10 @@ use agent::{messages::Command, messages::UIUpdate, AgentActor};
 use anyhow::Result;
 use llm::{openai::OpenAICompatibleProvider, GenerationConfig};
 use std::sync::Arc;
-use tools::{bash::BashTool, read::ReadTool, registry::ToolRegistry, write::WriteTool};
+use tools::{
+    bash::BashTool, edit::EditTool, glob::GlobTool, grep::GrepTool, read::ReadTool,
+    registry::ToolRegistry, write::WriteTool,
+};
 use tokio::sync::mpsc;
 use ui::App;
 
@@ -27,6 +30,9 @@ async fn main() -> Result<()> {
     tool_registry.register(Arc::new(BashTool::new(120)))?;
     tool_registry.register(Arc::new(ReadTool::new()))?;
     tool_registry.register(Arc::new(WriteTool::new()))?;
+    tool_registry.register(Arc::new(EditTool::new()))?;
+    tool_registry.register(Arc::new(GrepTool::new()))?;
+    tool_registry.register(Arc::new(GlobTool::new()))?;
     let tool_registry = Arc::new(tool_registry);
 
     // Create channels
