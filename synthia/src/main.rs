@@ -9,7 +9,7 @@ use anyhow::Result;
 use llm::{openai::OpenAICompatibleProvider, GenerationConfig};
 use std::sync::Arc;
 use tools::{
-    bash::BashTool, edit::EditTool, glob::GlobTool, grep::GrepTool, read::ReadTool,
+    bash::BashTool, edit::EditTool, git::GitTool, glob::GlobTool, grep::GrepTool, read::ReadTool,
     registry::ToolRegistry, webfetch::WebFetchTool, write::WriteTool,
 };
 use tokio::sync::mpsc;
@@ -34,6 +34,7 @@ async fn main() -> Result<()> {
     tool_registry.register(Arc::new(GrepTool::new()))?;
     tool_registry.register(Arc::new(GlobTool::new()))?;
     tool_registry.register(Arc::new(WebFetchTool::new()))?;
+    tool_registry.register(Arc::new(GitTool::new(120)))?;
     let tool_registry = Arc::new(tool_registry);
 
     // Create channels
