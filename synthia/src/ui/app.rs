@@ -29,6 +29,7 @@ enum Message {
 pub struct App {
     conversation: Vec<Message>,
     input: String,
+    cursor_position: usize, // Position of cursor in input string
     cmd_tx: Sender<Command>,
     ui_rx: Receiver<UIUpdate>,
     should_quit: bool,
@@ -45,6 +46,7 @@ impl App {
         Self {
             conversation: Vec::new(),
             input: String::new(),
+            cursor_position: 0,
             cmd_tx,
             ui_rx,
             should_quit: false,
@@ -325,6 +327,7 @@ impl App {
                     self.conversation.push(Message::User(msg.clone()));
                     self.cmd_tx.send(Command::SendMessage(msg)).await?;
                     self.input.clear();
+                    self.cursor_position = 0;
                     self.auto_scroll_to_bottom();
                 }
             }
@@ -343,9 +346,13 @@ impl App {
             }
             (KeyCode::Char(c), _) => {
                 self.input.push(c);
+                self.cursor_position = self.input.len();
             }
             (KeyCode::Backspace, _) => {
-                self.input.pop();
+                if !self.input.is_empty() && self.cursor_position > 0 {
+                    self.input.pop();
+                    self.cursor_position = self.input.len();
+                }
             }
             _ => {}
         }
@@ -491,6 +498,12 @@ impl App {
             .block(Block::default().borders(Borders::ALL).title("Input"))
             .wrap(Wrap { trim: false });
         f.render_widget(input, chunks[2]);
+
+        // Set cursor position in the input field
+        // Calculate cursor position accounting for text wrapping
+        let cursor_x = chunks[2].x + 1 + (self.cursor_position as u16 % input_width.max(1));
+        let cursor_y = chunks[2].y + 1 + (self.cursor_position as u16 / input_width.max(1));
+        f.set_cursor_position((cursor_x, cursor_y));
 
         // Session list overlay (if showing)
         if self.show_session_list {
