@@ -95,12 +95,23 @@ fine-tuning/
 
 ### Step 1: Setup Environment
 
+Choose your preferred shell:
+
+**PowerShell:**
 ```powershell
 # Run the automated setup script
 .\setup.ps1
 ```
 
-This script will:
+**Git Bash:**
+```bash
+# Run the automated setup script
+bash setup.sh
+# or
+./setup.sh
+```
+
+Both scripts will:
 - Check Python and CUDA installation
 - Create virtual environment
 - Install PyTorch with CUDA 12.1
@@ -109,9 +120,19 @@ This script will:
 
 ### Step 2: Train the Model
 
+**PowerShell:**
 ```powershell
 # Activate virtual environment
 .\venv\Scripts\Activate.ps1
+
+# Start training (~1-2 hours on RTX 4060)
+python train.py
+```
+
+**Git Bash:**
+```bash
+# Activate virtual environment
+source venv/Scripts/activate
 
 # Start training (~1-2 hours on RTX 4060)
 python train.py
@@ -127,7 +148,8 @@ Training settings (optimized for 8GB VRAM):
 
 ### Step 3: Merge and Export
 
-```powershell
+**Both PowerShell and Git Bash:**
+```bash
 # Merge LoRA adapters into base model
 python merge_and_export.py
 ```
@@ -139,7 +161,8 @@ This will create:
 
 ### Step 4: Test the Model
 
-```powershell
+**Both PowerShell and Git Bash:**
+```bash
 # Quick inference test
 python test_model.py
 ```
