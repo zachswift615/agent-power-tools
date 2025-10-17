@@ -30,7 +30,7 @@ impl WorkshopTool {
 
         if !check.status.success() {
             return Ok(ToolResult {
-                content: "Workshop CLI not found in PATH. Please install it first: https://github.com/yourusername/workshop".to_string(),
+                content: "Workshop CLI not found in PATH. Workshop is part of the agent-power-tools project. Install instructions: https://github.com/anthropics/agent-power-tools".to_string(),
                 is_error: true,
             });
         }
@@ -93,17 +93,14 @@ impl WorkshopTool {
         let mut args = vec!["gotcha", &text];
 
         // Build tag arguments
-        let mut tag_strings = Vec::new();
+        let tag_strings: Vec<String>;
         if let Some(t) = tags {
-            for tag in &t {
-                tag_strings.push(format!("-t"));
-                tag_strings.push(tag.clone());
-            }
-        }
+            tag_strings = t.into_iter().flat_map(|tag| vec!["-t".to_string(), tag]).collect();
 
-        // Add tag args to command
-        for tag_str in &tag_strings {
-            args.push(tag_str);
+            // Add tag args to command
+            for tag_str in &tag_strings {
+                args.push(tag_str.as_str());
+            }
         }
 
         self.run_workshop_command(&args).await
