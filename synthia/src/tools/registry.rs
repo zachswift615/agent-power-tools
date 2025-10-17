@@ -15,8 +15,16 @@ impl ToolRegistry {
         }
     }
 
-    pub fn register(&mut self, tool: Arc<dyn Tool>) {
-        self.tools.insert(tool.name().to_string(), tool);
+    pub fn register(&mut self, tool: Arc<dyn Tool>) -> Result<()> {
+        let tool_name = tool.name().to_string();
+        if self.tools.contains_key(&tool_name) {
+            return Err(anyhow!(
+                "Tool name collision: '{}' is already registered",
+                tool_name
+            ));
+        }
+        self.tools.insert(tool_name, tool);
+        Ok(())
     }
 
     pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
@@ -41,6 +49,12 @@ impl ToolRegistry {
                 })
             })
             .collect()
+    }
+}
+
+impl Default for ToolRegistry {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -74,7 +88,7 @@ mod tests {
     #[tokio::test]
     async fn test_registry_register_and_execute() {
         let mut registry = ToolRegistry::new();
-        registry.register(Arc::new(TestTool));
+        registry.register(Arc::new(TestTool)).unwrap();
 
         let result = registry
             .execute("test", serde_json::json!({}))
@@ -88,5 +102,28 @@ mod tests {
         let registry = ToolRegistry::new();
         let result = registry.execute("missing", serde_json::json!({})).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_registry_collision_detection() {
+        let mut registry = ToolRegistry::new();
+
+        // First registration should succeed
+        let result = registry.register(Arc::new(TestTool));
+        assert!(result.is_ok());
+
+        // Second registration with same name should fail
+        let result = registry.register(Arc::new(TestTool));
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Tool name collision"));
+    }
+
+    #[test]
+    fn test_default_trait() {
+        let registry = ToolRegistry::default();
+        assert_eq!(registry.tools.len(), 0);
     }
 }
