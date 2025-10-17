@@ -1,5 +1,8 @@
 pub mod bash;
+pub mod edit;
+pub mod read;
 pub mod registry;
+pub mod write;
 
 use anyhow::Result;
 use async_trait::async_trait;
