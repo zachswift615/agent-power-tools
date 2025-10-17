@@ -320,7 +320,10 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
         }
 
         for (id, (name, args_str)) in tool_calls {
-            let input = serde_json::from_str(&args_str).unwrap_or_else(|_| serde_json::json!({}));
+            let input = serde_json::from_str(&args_str).unwrap_or_else(|e| {
+                tracing::error!("Failed to parse tool arguments for tool '{}' (id: {}): {}. Raw arguments: {}", name, id, e, args_str);
+                serde_json::json!({})
+            });
             content.push(ContentBlock::ToolUse { id, name, input });
         }
 

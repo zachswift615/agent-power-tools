@@ -201,7 +201,10 @@ impl LLMProvider for OpenAICompatibleProvider {
 
                 // Parse arguments JSON string
                 let input: Value = serde_json::from_str(arguments_str)
-                    .unwrap_or_else(|_| json!({}));
+                    .unwrap_or_else(|e| {
+                        tracing::error!("Failed to parse tool arguments for tool '{}': {}. Raw arguments: {}", name, e, arguments_str);
+                        json!({})
+                    });
 
                 content.push(ContentBlock::ToolUse { id, name, input });
             }

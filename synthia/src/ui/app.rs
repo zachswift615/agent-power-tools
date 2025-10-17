@@ -1,7 +1,7 @@
 use crate::agent::messages::{Command, UIUpdate};
 use crate::ui::markdown::render_markdown;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers, MouseEvent, MouseEventKind, EnableMouseCapture, DisableMouseCapture},
+    event::{self, Event, KeyCode, KeyModifiers, MouseEvent, MouseEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -62,7 +62,7 @@ impl App {
     pub async fn run(&mut self) -> anyhow::Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        execute!(stdout, EnterAlternateScreen)?;
         let backend = CrosstermBackend::new(stdout);
         let mut terminal = Terminal::new(backend)?;
 
@@ -91,7 +91,7 @@ impl App {
 
         // Cleanup
         disable_raw_mode()?;
-        execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
+        execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
         terminal.show_cursor()?;
 
         Ok(())
@@ -360,7 +360,8 @@ impl App {
     }
 
     fn handle_mouse_input(&mut self, mouse: MouseEvent) {
-        // Handle mouse scroll events for message history navigation
+        // Note: Mouse capture is disabled to allow terminal text selection.
+        // This handler won't receive events, but is kept for potential future use.
         match mouse.kind {
             MouseEventKind::ScrollUp => {
                 // Scroll up in message history (3 lines per scroll event for smooth scrolling)
@@ -408,7 +409,7 @@ impl App {
             String::new()
         };
         let status_text = format!(
-            "Synthia v0.1.0 (↑/↓/mouse scroll | ^S save | ^N new | ^L load){}",
+            "Synthia v0.1.0 (↑/↓ scroll | ^S save | ^N new | ^L load){}",
             session_info
         );
         let status = Paragraph::new(status_text)
