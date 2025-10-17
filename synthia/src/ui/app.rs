@@ -33,6 +33,7 @@ pub struct App {
     ui_rx: Receiver<UIUpdate>,
     should_quit: bool,
     scroll_offset: u16,
+    auto_scroll_enabled: bool, // Track if we should auto-scroll to bottom
     current_session_id: Option<String>,
     session_list: Vec<crate::session::SessionInfo>,
     show_session_list: bool,
@@ -48,6 +49,7 @@ impl App {
             ui_rx,
             should_quit: false,
             scroll_offset: 0,
+            auto_scroll_enabled: true, // Start with auto-scroll enabled
             current_session_id: None,
             session_list: Vec::new(),
             show_session_list: false,
@@ -166,8 +168,8 @@ impl App {
     }
 
     fn auto_scroll_to_bottom(&mut self) {
-        // Reset scroll to 0, which will show the bottom of the conversation
-        self.scroll_offset = 0;
+        // Enable auto-scroll mode - actual scroll position calculated in render()
+        self.auto_scroll_enabled = true;
     }
 
     async fn handle_input(
@@ -236,12 +238,17 @@ impl App {
                 }
             }
             (KeyCode::Up, _) => {
-                // Scroll up
+                // Scroll up - disable auto-scroll when user manually scrolls
+                self.auto_scroll_enabled = false;
                 self.scroll_offset = self.scroll_offset.saturating_add(1);
             }
             (KeyCode::Down, _) => {
                 // Scroll down
                 self.scroll_offset = self.scroll_offset.saturating_sub(1);
+                // Re-enable auto-scroll if we've scrolled back to bottom (offset = 0)
+                if self.scroll_offset == 0 {
+                    self.auto_scroll_enabled = true;
+                }
             }
             (KeyCode::Char(c), _) => {
                 self.input.push(c);
@@ -350,10 +357,20 @@ impl App {
             }
         }
 
+        // Calculate scroll position
+        // If auto-scroll is enabled, show the bottom of the conversation
+        let scroll_offset = if self.auto_scroll_enabled {
+            let total_lines = lines.len() as u16;
+            let visible_height = chunks[1].height.saturating_sub(2); // Subtract borders
+            total_lines.saturating_sub(visible_height)
+        } else {
+            self.scroll_offset
+        };
+
         let conversation = Paragraph::new(lines)
             .block(Block::default().borders(Borders::ALL).title("Conversation"))
             .wrap(Wrap { trim: false })
-            .scroll((self.scroll_offset, 0));
+            .scroll((scroll_offset, 0));
         f.render_widget(conversation, chunks[1]);
 
         // Input with wrapping support
@@ -430,12 +447,12 @@ mod tests {
         let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
         let mut app = App::new(cmd_tx, ui_rx);
 
-        // Set scroll offset to some value
-        app.scroll_offset = 10;
+        // Disable auto-scroll
+        app.auto_scroll_enabled = false;
 
-        // Auto scroll should reset to 0
+        // Auto scroll should enable auto-scroll mode
         app.auto_scroll_to_bottom();
-        assert_eq!(app.scroll_offset, 0);
+        assert!(app.auto_scroll_enabled, "Auto-scroll should be enabled");
     }
 
     #[test]
@@ -512,28 +529,74 @@ mod tests {
         let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
         let mut app = App::new(cmd_tx, ui_rx);
 
-        // Scroll up manually
-        app.scroll_offset = 10;
+        // Disable auto-scroll (simulating user scrolling up)
+        app.auto_scroll_enabled = false;
 
-        // New assistant message should auto-scroll to bottom
+        // New assistant message should enable auto-scroll
         app.handle_ui_update(UIUpdate::AssistantText("New message".to_string()));
-        assert_eq!(app.scroll_offset, 0, "Should auto-scroll to bottom on new assistant message");
+        assert!(app.auto_scroll_enabled, "Should enable auto-scroll on new assistant message");
 
-        // Scroll up again
-        app.scroll_offset = 5;
+        // Disable again
+        app.auto_scroll_enabled = false;
 
-        // New error message should also auto-scroll
+        // New error message should also enable auto-scroll
         app.handle_ui_update(UIUpdate::Error("Error".to_string()));
-        assert_eq!(app.scroll_offset, 0, "Should auto-scroll to bottom on error message");
+        assert!(app.auto_scroll_enabled, "Should enable auto-scroll on error message");
 
-        // Scroll up again
-        app.scroll_offset = 7;
+        // Disable again
+        app.auto_scroll_enabled = false;
 
-        // Tool execution should auto-scroll
+        // Tool execution should enable auto-scroll
         app.handle_ui_update(UIUpdate::ToolExecutionStarted {
             name: "Tool".to_string(),
             id: "1".to_string(),
         });
-        assert_eq!(app.scroll_offset, 0, "Should auto-scroll to bottom on tool execution");
+        assert!(app.auto_scroll_enabled, "Should enable auto-scroll on tool execution");
+    }
+
+    #[test]
+    fn test_manual_scroll_behavior() {
+        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
+        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
+        let mut app = App::new(cmd_tx, ui_rx);
+
+        // Initially auto-scroll is enabled
+        assert!(app.auto_scroll_enabled);
+
+        // Scrolling up should disable auto-scroll
+        app.scroll_offset = 0;
+        app.scroll_offset = app.scroll_offset.saturating_add(1);
+        app.auto_scroll_enabled = false; // Simulating Up key behavior
+        assert!(!app.auto_scroll_enabled, "Manual scroll up should disable auto-scroll");
+        assert_eq!(app.scroll_offset, 1);
+
+        // Scrolling down to 0 should re-enable auto-scroll
+        app.scroll_offset = app.scroll_offset.saturating_sub(1);
+        if app.scroll_offset == 0 {
+            app.auto_scroll_enabled = true; // Simulating Down key behavior
+        }
+        assert!(app.auto_scroll_enabled, "Scrolling back to bottom should re-enable auto-scroll");
+    }
+
+    #[test]
+    fn test_typing_doesnt_affect_scroll() {
+        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
+        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
+        let mut app = App::new(cmd_tx, ui_rx);
+
+        // Scroll up and disable auto-scroll
+        app.auto_scroll_enabled = false;
+        app.scroll_offset = 10;
+
+        // Type some characters
+        app.input.push('h');
+        app.input.push('e');
+        app.input.push('l');
+        app.input.push('l');
+        app.input.push('o');
+
+        // Scroll position should not change
+        assert_eq!(app.scroll_offset, 10, "Typing should not affect scroll position");
+        assert!(!app.auto_scroll_enabled, "Typing should not enable auto-scroll");
     }
 }
