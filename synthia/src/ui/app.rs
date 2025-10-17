@@ -31,6 +31,10 @@ pub struct App {
     ui_rx: Receiver<UIUpdate>,
     should_quit: bool,
     scroll_offset: u16,
+    current_session_id: Option<String>,
+    session_list: Vec<crate::session::SessionInfo>,
+    show_session_list: bool,
+    session_list_selected: usize,
 }
 
 impl App {
@@ -42,6 +46,10 @@ impl App {
             ui_rx,
             should_quit: false,
             scroll_offset: 0,
+            current_session_id: None,
+            session_list: Vec::new(),
+            show_session_list: false,
+            session_list_selected: 0,
         }
     }
 
@@ -104,6 +112,20 @@ impl App {
             UIUpdate::Complete => {
                 // Generation complete
             }
+            UIUpdate::SessionSaved { session_id } => {
+                self.current_session_id = Some(session_id.clone());
+                self.conversation.push(Message::Tool(format!("[Session saved: {}]", session_id)));
+                self.auto_scroll_to_bottom();
+            }
+            UIUpdate::SessionLoaded { session_id } => {
+                self.current_session_id = Some(session_id);
+                self.show_session_list = false;
+            }
+            UIUpdate::SessionList { sessions } => {
+                self.session_list = sessions;
+                self.show_session_list = true;
+                self.session_list_selected = 0;
+            }
         }
     }
 
@@ -116,6 +138,37 @@ impl App {
         &mut self,
         key: event::KeyEvent,
     ) -> anyhow::Result<()> {
+        // Handle session list navigation when visible
+        if self.show_session_list {
+            match key.code {
+                KeyCode::Up => {
+                    if self.session_list_selected > 0 {
+                        self.session_list_selected -= 1;
+                    }
+                    return Ok(());
+                }
+                KeyCode::Down => {
+                    if self.session_list_selected < self.session_list.len().saturating_sub(1) {
+                        self.session_list_selected += 1;
+                    }
+                    return Ok(());
+                }
+                KeyCode::Enter => {
+                    if let Some(session) = self.session_list.get(self.session_list_selected) {
+                        self.cmd_tx.send(Command::LoadSession(session.id.clone())).await?;
+                        self.conversation.clear();
+                    }
+                    return Ok(());
+                }
+                KeyCode::Esc => {
+                    self.show_session_list = false;
+                    return Ok(());
+                }
+                _ => {}
+            }
+        }
+
+        // Normal input handling
         match (key.code, key.modifiers) {
             (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
                 self.cmd_tx.send(Command::Cancel).await?;
@@ -123,6 +176,19 @@ impl App {
             (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
                 self.cmd_tx.send(Command::Shutdown).await?;
                 self.should_quit = true;
+            }
+            (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
+                // Manually save session
+                self.cmd_tx.send(Command::SaveSession).await?;
+            }
+            (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
+                // Start new session
+                self.cmd_tx.send(Command::NewSession).await?;
+                self.conversation.clear();
+            }
+            (KeyCode::Char('l'), KeyModifiers::CONTROL) => {
+                // List and load session
+                self.cmd_tx.send(Command::ListSessions).await?;
             }
             (KeyCode::Enter, _) => {
                 if !self.input.is_empty() {
@@ -172,8 +238,17 @@ impl App {
             ])
             .split(f.area());
 
-        // Status bar
-        let status = Paragraph::new("Synthia v0.1.0 (↑/↓ to scroll)")
+        // Status bar with session info
+        let session_info = if let Some(ref session_id) = self.current_session_id {
+            format!(" | Session: {}", &session_id[..session_id.len().min(20)])
+        } else {
+            String::new()
+        };
+        let status_text = format!(
+            "Synthia v0.1.0 (↑/↓ scroll | ^S save | ^N new | ^L load){}",
+            session_info
+        );
+        let status = Paragraph::new(status_text)
             .style(Style::default().bg(Color::Blue).fg(Color::White))
             .block(Block::default().borders(Borders::ALL));
         f.render_widget(status, chunks[0]);
@@ -227,6 +302,62 @@ impl App {
             .block(Block::default().borders(Borders::ALL).title("Input"))
             .wrap(Wrap { trim: false });
         f.render_widget(input, chunks[2]);
+
+        // Session list overlay (if showing)
+        if self.show_session_list {
+            use ratatui::widgets::{List, ListItem};
+
+            // Create a centered overlay
+            let popup_area = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Percentage(20),
+                    Constraint::Percentage(60),
+                    Constraint::Percentage(20),
+                ])
+                .split(f.area())[1];
+
+            let popup_area = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Percentage(10),
+                    Constraint::Percentage(80),
+                    Constraint::Percentage(10),
+                ])
+                .split(popup_area)[1];
+
+            // Create list items
+            let items: Vec<ListItem> = self.session_list.iter().enumerate().map(|(idx, session)| {
+                let style = if idx == self.session_list_selected {
+                    Style::default().bg(Color::White).fg(Color::Black)
+                } else {
+                    Style::default()
+                };
+
+                let timestamp = chrono::DateTime::from_timestamp(session.last_modified, 0)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                let text = format!(
+                    "{} - {} msgs - {}",
+                    timestamp,
+                    session.message_count,
+                    &session.id[..session.id.len().min(30)]
+                );
+
+                ListItem::new(text).style(style)
+            }).collect();
+
+            let list = List::new(items)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Load Session (↑/↓ navigate | Enter select | Esc cancel)")
+                        .style(Style::default().bg(Color::Black))
+                );
+
+            f.render_widget(list, popup_area);
+        }
     }
 }
 

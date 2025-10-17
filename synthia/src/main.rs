@@ -1,6 +1,7 @@
 mod agent;
 mod config;
 mod llm;
+mod session;
 mod tools;
 mod types;
 mod ui;
