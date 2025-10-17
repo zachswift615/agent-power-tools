@@ -12,6 +12,8 @@ pub enum Command {
 #[derive(Debug, Clone)]
 pub enum UIUpdate {
     AssistantText(String),
+    AssistantTextDelta(String), // For streaming text chunks
+    AssistantThinking, // Indicator that agent is thinking
     ToolExecutionStarted { name: String, id: String },
     ToolExecutionCompleted { name: String, id: String, duration_ms: u64 },
     Error(String),

@@ -20,6 +20,8 @@ use tokio::sync::mpsc::{Receiver, Sender};
 enum Message {
     User(String),
     Assistant(String),
+    AssistantStreaming(String), // Accumulating streaming text
+    Thinking, // "Thinking..." indicator
     Tool(String),
     Error(String),
 }
@@ -88,10 +90,41 @@ impl App {
     fn handle_ui_update(&mut self, update: UIUpdate) {
         match update {
             UIUpdate::AssistantText(text) => {
+                // Non-streaming: add complete message at once
                 self.conversation.push(Message::Assistant(text));
                 self.auto_scroll_to_bottom();
             }
+            UIUpdate::AssistantThinking => {
+                // Remove any previous thinking indicator
+                if let Some(Message::Thinking) = self.conversation.last() {
+                    self.conversation.pop();
+                }
+                self.conversation.push(Message::Thinking);
+                self.auto_scroll_to_bottom();
+            }
+            UIUpdate::AssistantTextDelta(delta) => {
+                // Streaming: accumulate text incrementally
+                match self.conversation.last_mut() {
+                    Some(Message::Thinking) => {
+                        // Replace thinking indicator with first chunk
+                        *self.conversation.last_mut().unwrap() = Message::AssistantStreaming(delta);
+                    }
+                    Some(Message::AssistantStreaming(ref mut text)) => {
+                        // Append to existing streaming message
+                        text.push_str(&delta);
+                    }
+                    _ => {
+                        // Start new streaming message
+                        self.conversation.push(Message::AssistantStreaming(delta));
+                    }
+                }
+                self.auto_scroll_to_bottom();
+            }
             UIUpdate::ToolExecutionStarted { name, id: _ } => {
+                // Convert streaming message to final assistant message before tool execution
+                if let Some(Message::AssistantStreaming(text)) = self.conversation.last().cloned() {
+                    *self.conversation.last_mut().unwrap() = Message::Assistant(text);
+                }
                 self.conversation
                     .push(Message::Tool(format!("[Tool: {}] ⏳ Running...", name)));
                 self.auto_scroll_to_bottom();
@@ -110,7 +143,10 @@ impl App {
                 self.auto_scroll_to_bottom();
             }
             UIUpdate::Complete => {
-                // Generation complete
+                // Finalize streaming message if present
+                if let Some(Message::AssistantStreaming(text)) = self.conversation.last().cloned() {
+                    *self.conversation.last_mut().unwrap() = Message::Assistant(text);
+                }
             }
             UIUpdate::SessionSaved { session_id } => {
                 self.current_session_id = Some(session_id.clone());
@@ -277,6 +313,29 @@ impl App {
                     }
                     lines.push(Line::from("")); // Empty line for spacing
                 }
+                Message::AssistantStreaming(text) => {
+                    // Display streaming text with a cursor indicator
+                    lines.push(Line::from(
+                        Span::styled("Assistant:", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                    ));
+
+                    // Use custom markdown renderer for streaming text
+                    let markdown_lines = render_markdown(text);
+                    for line in markdown_lines {
+                        lines.push(line);
+                    }
+                    // Add a blinking cursor to indicate streaming
+                    lines.push(Line::from(
+                        Span::styled("▊", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                    ));
+                    lines.push(Line::from("")); // Empty line for spacing
+                }
+                Message::Thinking => {
+                    lines.push(Line::from(
+                        Span::styled("Assistant: Thinking...", Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC))
+                    ));
+                    lines.push(Line::from("")); // Empty line for spacing
+                }
                 Message::Tool(text) => {
                     lines.push(Line::from(
                         Span::styled(text, Style::default().fg(Color::Yellow))
@@ -383,12 +442,16 @@ mod tests {
     fn test_message_types() {
         let msg_user = Message::User("test".to_string());
         let msg_assistant = Message::Assistant("test".to_string());
+        let msg_streaming = Message::AssistantStreaming("test".to_string());
+        let msg_thinking = Message::Thinking;
         let msg_tool = Message::Tool("test".to_string());
         let msg_error = Message::Error("test".to_string());
 
         // Just verify they can be created
         assert!(matches!(msg_user, Message::User(_)));
         assert!(matches!(msg_assistant, Message::Assistant(_)));
+        assert!(matches!(msg_streaming, Message::AssistantStreaming(_)));
+        assert!(matches!(msg_thinking, Message::Thinking));
         assert!(matches!(msg_tool, Message::Tool(_)));
         assert!(matches!(msg_error, Message::Error(_)));
     }

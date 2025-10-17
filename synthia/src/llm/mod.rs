@@ -1,4 +1,4 @@
 pub mod openai;
 pub mod provider;
 
-pub use provider::{GenerationConfig, LLMProvider, LLMResponse};
+pub use provider::{GenerationConfig, LLMProvider, LLMResponse, StreamEvent};

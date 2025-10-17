@@ -38,6 +38,10 @@ pub struct LLMConfig {
     /// Maximum tokens to generate
     #[serde(default = "default_max_tokens")]
     pub max_tokens: Option<u32>,
+
+    /// Enable streaming for text generation
+    #[serde(default = "default_streaming")]
+    pub streaming: bool,
 }
 
 /// Timeout configuration for various tools
@@ -113,6 +117,10 @@ fn default_max_output_lines() -> usize {
     1000
 }
 
+fn default_streaming() -> bool {
+    true
+}
+
 impl Default for LLMConfig {
     fn default() -> Self {
         Self {
@@ -121,6 +129,7 @@ impl Default for LLMConfig {
             model: default_model(),
             temperature: default_temperature(),
             max_tokens: default_max_tokens(),
+            streaming: default_streaming(),
         }
     }
 }

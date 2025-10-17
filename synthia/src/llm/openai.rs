@@ -1,9 +1,12 @@
-use super::provider::{GenerationConfig, LLMProvider, LLMResponse};
+use super::provider::{GenerationConfig, LLMProvider, LLMResponse, StreamEvent, StreamResult};
 use crate::types::{ContentBlock, Message, Role, StopReason, TokenUsage};
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use futures::{Stream, StreamExt};
 use reqwest::Client;
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::pin::Pin;
 
 pub struct OpenAICompatibleProvider {
     client: Client,
@@ -237,6 +240,207 @@ impl LLMProvider for OpenAICompatibleProvider {
             usage,
         })
     }
+
+    async fn stream_chat_completion(
+        &self,
+        messages: Vec<Message>,
+        tools: Vec<Value>,
+        config: &GenerationConfig,
+    ) -> Result<StreamResult> {
+        let url = format!("{}/chat/completions", self.api_base);
+
+        let mut request_body = json!({
+            "model": config.model,
+            "messages": self.convert_messages(messages),
+            "temperature": config.temperature,
+            "stream": true,
+        });
+
+        if let Some(max_tokens) = config.max_tokens {
+            request_body["max_tokens"] = json!(max_tokens);
+        }
+
+        if !tools.is_empty() {
+            let openai_tools: Vec<Value> = tools
+                .into_iter()
+                .map(|tool| json!({
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool["description"],
+                        "parameters": tool["input_schema"]
+                    }
+                }))
+                .collect();
+            request_body["tools"] = json!(openai_tools);
+        }
+
+        let mut req = self.client.post(&url).json(&request_body);
+
+        if let Some(key) = &self.api_key {
+            req = req.header("Authorization", format!("Bearer {}", key));
+        }
+
+        let response = req.send().await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            return Err(anyhow!("HTTP error {}: {}", status, error_text));
+        }
+
+        // Convert response to SSE stream
+        let stream = response.bytes_stream();
+        let event_stream = Self::parse_sse_stream(stream);
+
+        Ok(Box::pin(event_stream))
+    }
+}
+
+impl OpenAICompatibleProvider {
+    fn parse_sse_stream(
+        stream: impl Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
+    ) -> impl Stream<Item = Result<StreamEvent>> + Send {
+        // Use a shared state approach
+        use futures::stream::unfold;
+
+        struct State {
+            buffer: String,
+            tool_calls: HashMap<String, (String, String)>,
+            stream: Pin<Box<dyn Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send>>,
+        }
+
+        let initial_state = State {
+            buffer: String::new(),
+            tool_calls: HashMap::new(),
+            stream: Box::pin(stream),
+        };
+
+        unfold(initial_state, |mut state| async move {
+            loop {
+                // Try to process buffered data first
+                if let Some(pos) = state.buffer.find("\n\n") {
+                    let message = state.buffer[..pos].to_string();
+                    state.buffer = state.buffer[pos + 2..].to_string();
+
+                    // Parse SSE format: "data: {...}"
+                    for line in message.lines() {
+                        if let Some(data) = line.strip_prefix("data: ") {
+                            if data.trim() == "[DONE]" {
+                                let usage = TokenUsage {
+                                    input_tokens: 0,
+                                    output_tokens: 0,
+                                };
+                                return Some((Ok(StreamEvent::Done {
+                                    stop_reason: StopReason::EndTurn,
+                                    usage,
+                                }), state));
+                            }
+
+                            match serde_json::from_str::<Value>(data) {
+                                Ok(json) => {
+                                    if let Some(error) = json.get("error") {
+                                        return Some((Ok(StreamEvent::Error(
+                                            error.get("message")
+                                                .and_then(|m| m.as_str())
+                                                .unwrap_or("Unknown error")
+                                                .to_string()
+                                        )), state));
+                                    }
+
+                                    if let Some(choices) = json.get("choices").and_then(|c| c.as_array()) {
+                                        if let Some(choice) = choices.get(0) {
+                                            let delta = choice.get("delta");
+
+                                            // Handle text content
+                                            if let Some(content) = delta.and_then(|d| d.get("content")).and_then(|c| c.as_str()) {
+                                                if !content.is_empty() {
+                                                    return Some((Ok(StreamEvent::TextDelta(content.to_string())), state));
+                                                }
+                                            }
+
+                                            // Handle tool calls
+                                            if let Some(tool_calls_array) = delta.and_then(|d| d.get("tool_calls")).and_then(|tc| tc.as_array()) {
+                                                for tool_call in tool_calls_array {
+                                                    let id = tool_call.get("id").and_then(|i| i.as_str()).map(|s| s.to_string());
+                                                    let function = tool_call.get("function");
+
+                                                    if let Some(id) = id {
+                                                        if let Some(name) = function.and_then(|f| f.get("name")).and_then(|n| n.as_str()) {
+                                                            state.tool_calls.insert(id.clone(), (name.to_string(), String::new()));
+                                                            return Some((Ok(StreamEvent::ToolCallStart {
+                                                                id: id.clone(),
+                                                                name: name.to_string(),
+                                                            }), state));
+                                                        }
+                                                    }
+
+                                                    if let Some(args) = function.and_then(|f| f.get("arguments")).and_then(|a| a.as_str()) {
+                                                        let tool_id = if let Some(explicit_id) = tool_call.get("id").and_then(|i| i.as_str()) {
+                                                            explicit_id.to_string()
+                                                        } else {
+                                                            state.tool_calls.keys().next().cloned().unwrap_or_default()
+                                                        };
+
+                                                        if let Some((_, accumulated_args)) = state.tool_calls.get_mut(&tool_id) {
+                                                            accumulated_args.push_str(args);
+                                                            return Some((Ok(StreamEvent::ToolCallDelta {
+                                                                id: tool_id.clone(),
+                                                                arguments_delta: args.to_string(),
+                                                            }), state));
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // Check finish_reason
+                                            if let Some(finish_reason) = choice.get("finish_reason").and_then(|fr| fr.as_str()) {
+                                                let stop_reason = match finish_reason {
+                                                    "stop" => StopReason::EndTurn,
+                                                    "length" => StopReason::MaxTokens,
+                                                    "tool_calls" => StopReason::StopSequence,
+                                                    _ => StopReason::EndTurn,
+                                                };
+
+                                                let usage = json.get("usage").map(|u| TokenUsage {
+                                                    input_tokens: u.get("prompt_tokens").and_then(|pt| pt.as_u64()).unwrap_or(0) as u32,
+                                                    output_tokens: u.get("completion_tokens").and_then(|ct| ct.as_u64()).unwrap_or(0) as u32,
+                                                }).unwrap_or_else(|| TokenUsage { input_tokens: 0, output_tokens: 0 });
+
+                                                return Some((Ok(StreamEvent::Done {
+                                                    stop_reason,
+                                                    usage,
+                                                }), state));
+                                            }
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to parse SSE chunk: {} (data: {})", e, data);
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                // Need more data, fetch next chunk
+                match state.stream.next().await {
+                    Some(Ok(chunk)) => {
+                        state.buffer.push_str(&String::from_utf8_lossy(&chunk));
+                        continue;
+                    }
+                    Some(Err(e)) => {
+                        return Some((Err(anyhow!("Stream error: {}", e)), state));
+                    }
+                    None => {
+                        // Stream ended
+                        return None;
+                    }
+                }
+            }
+        })
+    }
 }
 
 #[cfg(test)]
@@ -317,5 +521,58 @@ mod tests {
         assert_eq!(converted[0]["role"], "tool");
         assert_eq!(converted[0]["tool_call_id"], "call_123");
         assert_eq!(converted[0]["content"], "Temperature: 72F");
+    }
+
+    #[tokio::test]
+    async fn test_parse_sse_stream_text_delta() {
+        use bytes::Bytes;
+        use futures::stream;
+        use futures::pin_mut;
+
+        // Simulate SSE stream with text deltas
+        let sse_data = vec![
+            Bytes::from("data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n"),
+            Bytes::from("data: {\"choices\":[{\"delta\":{\"content\":\" world\"}}]}\n\n"),
+            Bytes::from("data: {\"choices\":[{\"finish_reason\":\"stop\"}]}\n\n"),
+            Bytes::from("data: [DONE]\n\n"),
+        ];
+
+        let byte_stream = stream::iter(sse_data.into_iter().map(Ok::<_, reqwest::Error>));
+        let event_stream = OpenAICompatibleProvider::parse_sse_stream(byte_stream);
+        pin_mut!(event_stream);
+
+        // First event: "Hello"
+        let event1 = event_stream.next().await.unwrap().unwrap();
+        assert!(matches!(event1, StreamEvent::TextDelta(ref s) if s == "Hello"));
+
+        // Second event: " world"
+        let event2 = event_stream.next().await.unwrap().unwrap();
+        assert!(matches!(event2, StreamEvent::TextDelta(ref s) if s == " world"));
+
+        // Third event: Done with stop reason
+        let event3 = event_stream.next().await.unwrap().unwrap();
+        assert!(matches!(event3, StreamEvent::Done { stop_reason: StopReason::EndTurn, .. }));
+
+        // Fourth event: [DONE] marker
+        let event4 = event_stream.next().await.unwrap().unwrap();
+        assert!(matches!(event4, StreamEvent::Done { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_parse_sse_stream_error() {
+        use bytes::Bytes;
+        use futures::stream;
+        use futures::pin_mut;
+
+        let sse_data = vec![
+            Bytes::from("data: {\"error\":{\"message\":\"API error occurred\"}}\n\n"),
+        ];
+
+        let byte_stream = stream::iter(sse_data.into_iter().map(Ok::<_, reqwest::Error>));
+        let event_stream = OpenAICompatibleProvider::parse_sse_stream(byte_stream);
+        pin_mut!(event_stream);
+
+        let event = event_stream.next().await.unwrap().unwrap();
+        assert!(matches!(event, StreamEvent::Error(ref s) if s == "API error occurred"));
     }
 }

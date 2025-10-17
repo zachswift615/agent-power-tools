@@ -56,6 +56,7 @@ async fn main() -> Result<()> {
         model: config.llm.model.clone(),
         temperature: config.llm.temperature,
         max_tokens: config.llm.max_tokens,
+        streaming: config.llm.streaming,
     };
     let mut agent = AgentActor::new(
         llm_provider,

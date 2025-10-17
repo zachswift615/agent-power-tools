@@ -133,7 +133,8 @@
       "Bash(/Users/zachswift/projects/agent-power-tools/target/debug/synthia)",
       "Bash(git log:*)",
       "WebFetch(domain:platform.openai.com)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Read(//Users/zachswift/.config/superpowers/skills/skills/collaboration/requesting-code-review/**)"
     ],
     "deny": [],
     "ask": []
