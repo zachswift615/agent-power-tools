@@ -1,9 +1,9 @@
 {
   "created_at": {
-    "secs_since_epoch": 1760484201,
-    "nanos_since_epoch": 372064000
+    "secs_since_epoch": 1760675103,
+    "nanos_since_epoch": 509938000
   },
-  "files_hash": 9110191890409295693,
-  "file_count": 45,
+  "files_hash": 5078034503110428831,
+  "file_count": 66,
   "indexer_version": null
 }

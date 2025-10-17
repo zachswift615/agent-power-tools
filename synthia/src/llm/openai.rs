@@ -117,7 +117,21 @@ impl LLMProvider for OpenAICompatibleProvider {
         }
 
         if !tools.is_empty() {
-            request_body["tools"] = json!(tools);
+            // Convert tool definitions to OpenAI format
+            // Tools from registry come as: {"name": "...", "description": "...", "input_schema": {...}}
+            // OpenAI expects: {"type": "function", "function": {"name": "...", "description": "...", "parameters": {...}}}
+            let openai_tools: Vec<Value> = tools
+                .into_iter()
+                .map(|tool| json!({
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool["description"],
+                        "parameters": tool["input_schema"]
+                    }
+                }))
+                .collect();
+            request_body["tools"] = json!(openai_tools);
         }
 
         let mut req = self.client.post(&url).json(&request_body);
@@ -129,11 +143,14 @@ impl LLMProvider for OpenAICompatibleProvider {
         let response = req.send().await?;
         let response_json: Value = response.json().await?;
 
+        // Debug: Log the response to see what LM Studio is returning
+        tracing::debug!("LM Studio response: {}", serde_json::to_string_pretty(&response_json).unwrap_or_else(|_| "Failed to serialize".to_string()));
+
         // C1: Safe JSON parsing with proper error handling
         let choices = response_json
             .get("choices")
             .and_then(|c| c.as_array())
-            .ok_or_else(|| anyhow::anyhow!("No choices in response"))?;
+            .ok_or_else(|| anyhow::anyhow!("No choices in response. Full response: {}", serde_json::to_string_pretty(&response_json).unwrap_or_else(|_| "{}".to_string())))?;
 
         let choice = choices
             .get(0)
