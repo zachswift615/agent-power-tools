@@ -1,3 +1,4 @@
+pub mod bash;
 pub mod registry;
 
 use anyhow::Result;
