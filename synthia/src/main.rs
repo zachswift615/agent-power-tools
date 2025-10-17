@@ -1,3 +1,4 @@
+mod agent;
 mod llm;
 mod tools;
 mod types;
