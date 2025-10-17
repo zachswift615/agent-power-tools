@@ -94,7 +94,7 @@ fn default_max_tokens() -> Option<u32> {
 }
 
 fn default_bash_timeout() -> u64 {
-    120
+    300 // 5 minutes - increased from 120s to handle server startup and other long operations
 }
 
 fn default_git_timeout() -> u64 {
@@ -249,7 +249,7 @@ mod tests {
         assert_eq!(config.llm.model, "qwen2.5-coder-7b-instruct");
         assert_eq!(config.llm.temperature, 0.7);
         assert_eq!(config.llm.max_tokens, Some(4096));
-        assert_eq!(config.timeouts.bash_timeout, 120);
+        assert_eq!(config.timeouts.bash_timeout, 300);
         assert_eq!(config.timeouts.git_timeout, 120);
         assert_eq!(config.timeouts.workshop_timeout, 30);
         assert_eq!(config.timeouts.powertools_timeout, 60);

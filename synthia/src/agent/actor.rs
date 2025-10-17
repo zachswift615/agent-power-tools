@@ -338,10 +338,20 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                 let result = self.tool_registry.execute(name, input.clone()).await?;
                 let duration_ms = start.elapsed().as_millis() as u64;
 
+                // Truncate output to first 500 chars for UI display
+                let output_preview = if result.content.len() > 500 {
+                    format!("{}...", &result.content[..500])
+                } else {
+                    result.content.clone()
+                };
+
                 self.ui_tx
-                    .send(UIUpdate::ToolExecutionCompleted {
+                    .send(UIUpdate::ToolResult {
                         name: name.clone(),
                         id: id.clone(),
+                        input: input.clone(),
+                        output: output_preview,
+                        is_error: result.is_error,
                         duration_ms,
                     })
                     .await?;
@@ -399,10 +409,20 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                     let result = self.tool_registry.execute(name, input.clone()).await?;
                     let duration_ms = start.elapsed().as_millis() as u64;
 
+                    // Truncate output to first 500 chars for UI display
+                    let output_preview = if result.content.len() > 500 {
+                        format!("{}...", &result.content[..500])
+                    } else {
+                        result.content.clone()
+                    };
+
                     self.ui_tx
-                        .send(UIUpdate::ToolExecutionCompleted {
+                        .send(UIUpdate::ToolResult {
                             name: name.clone(),
                             id: id.clone(),
+                            input: input.clone(),
+                            output: output_preview,
+                            is_error: result.is_error,
                             duration_ms,
                         })
                         .await?;

@@ -137,14 +137,37 @@ impl App {
                     .push(Message::Tool(format!("[Tool: {}] ⏳ Running...", name)));
                 self.auto_scroll_to_bottom();
             }
-            UIUpdate::ToolExecutionCompleted {
+            UIUpdate::ToolResult {
                 name,
                 id: _,
+                input,
+                output,
+                is_error,
                 duration_ms,
             } => {
                 if let Some(Message::Tool(ref mut text)) = self.conversation.last_mut() {
-                    *text = format!("[Tool: {}] ✓ {}ms", name, duration_ms);
+                    // Format the tool result with input and output preview
+                    let status_icon = if is_error { "✗" } else { "✓" };
+
+                    // Extract key input params based on tool name
+                    let input_summary = Self::format_tool_input(&name, &input);
+
+                    // Truncate output to first ~5 lines (approximately 200 chars)
+                    let output_lines: Vec<&str> = output.lines().take(5).collect();
+                    let output_preview = output_lines.join("\n");
+                    let has_more = output.lines().count() > 5 || output.len() > 200;
+
+                    *text = format!(
+                        "[Tool: {}] {} {}ms{}\n  Output: {}{}",
+                        name,
+                        status_icon,
+                        duration_ms,
+                        input_summary,
+                        output_preview.trim(),
+                        if has_more { "\n  ..." } else { "" }
+                    );
                 }
+                self.auto_scroll_to_bottom();
             }
             UIUpdate::Error(err) => {
                 self.conversation.push(Message::Error(err));
@@ -177,6 +200,67 @@ impl App {
         // Enable auto-scroll mode and reset offset to ensure we're at the bottom
         self.auto_scroll_enabled = true;
         self.scroll_offset = 0;
+    }
+
+    /// Format tool input parameters for display
+    fn format_tool_input(tool_name: &str, input: &serde_json::Value) -> String {
+        // Extract relevant parameters based on tool type
+        match tool_name {
+            "bash" => {
+                // For bash tool, show the command
+                if let Some(command) = input.get("command").and_then(|v| v.as_str()) {
+                    let truncated = if command.len() > 60 {
+                        format!("{}...", &command[..60])
+                    } else {
+                        command.to_string()
+                    };
+                    format!("\n  Command: {}", truncated)
+                } else {
+                    String::new()
+                }
+            }
+            "read" => {
+                // For read tool, show the file path
+                if let Some(file_path) = input.get("file_path").and_then(|v| v.as_str()) {
+                    format!("\n  File: {}", file_path)
+                } else {
+                    String::new()
+                }
+            }
+            "write" | "edit" => {
+                // For write/edit tools, show the file path
+                if let Some(file_path) = input.get("file_path").and_then(|v| v.as_str()) {
+                    format!("\n  File: {}", file_path)
+                } else {
+                    String::new()
+                }
+            }
+            "grep" => {
+                // For grep, show the pattern
+                if let Some(pattern) = input.get("pattern").and_then(|v| v.as_str()) {
+                    let truncated = if pattern.len() > 40 {
+                        format!("{}...", &pattern[..40])
+                    } else {
+                        pattern.to_string()
+                    };
+                    format!("\n  Pattern: {}", truncated)
+                } else {
+                    String::new()
+                }
+            }
+            "glob" => {
+                // For glob, show the pattern
+                if let Some(pattern) = input.get("pattern").and_then(|v| v.as_str()) {
+                    format!("\n  Pattern: {}", pattern)
+                } else {
+                    String::new()
+                }
+            }
+            _ => {
+                // For other tools, don't show input details to keep it compact
+                String::new()
+            }
+        }
     }
 
     async fn handle_input(
@@ -339,7 +423,7 @@ impl App {
                 }
                 Message::Assistant(text) => {
                     lines.push(Line::from(
-                        Span::styled("Assistant:", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                        Span::styled("Synthia:", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
                     ));
 
                     // Use custom markdown renderer
@@ -352,7 +436,7 @@ impl App {
                 Message::AssistantStreaming(text) => {
                     // Display streaming text with a cursor indicator
                     lines.push(Line::from(
-                        Span::styled("Assistant:", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+                        Span::styled("Synthia:", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
                     ));
 
                     // Use custom markdown renderer for streaming text
@@ -368,7 +452,7 @@ impl App {
                 }
                 Message::Thinking => {
                     lines.push(Line::from(
-                        Span::styled("Assistant: Thinking...", Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC))
+                        Span::styled("Synthia: Thinking...", Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC))
                     ));
                     lines.push(Line::from("")); // Empty line for spacing
                 }

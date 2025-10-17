@@ -15,7 +15,14 @@ pub enum UIUpdate {
     AssistantTextDelta(String), // For streaming text chunks
     AssistantThinking, // Indicator that agent is thinking
     ToolExecutionStarted { name: String, id: String },
-    ToolExecutionCompleted { name: String, id: String, duration_ms: u64 },
+    ToolResult {
+        name: String,
+        id: String,
+        input: serde_json::Value,
+        output: String,
+        is_error: bool,
+        duration_ms: u64
+    },
     Error(String),
     Complete,
     SessionSaved { session_id: String },
