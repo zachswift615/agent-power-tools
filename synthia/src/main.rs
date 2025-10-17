@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tools::{
     bash::BashTool, edit::EditTool, git::GitTool, glob::GlobTool, grep::GrepTool,
     powertools::PowertoolsTool, read::ReadTool, registry::ToolRegistry,
-    webfetch::WebFetchTool, write::WriteTool,
+    webfetch::WebFetchTool, workshop::WorkshopTool, write::WriteTool,
 };
 use tokio::sync::mpsc;
 use ui::App;
@@ -37,6 +37,7 @@ async fn main() -> Result<()> {
     tool_registry.register(Arc::new(WebFetchTool::new()))?;
     tool_registry.register(Arc::new(GitTool::new(120)))?;
     tool_registry.register(Arc::new(PowertoolsTool::new()))?;
+    tool_registry.register(Arc::new(WorkshopTool::new(30)))?;
     let tool_registry = Arc::new(tool_registry);
 
     // Create channels

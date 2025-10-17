@@ -7,6 +7,7 @@ pub mod powertools;
 pub mod read;
 pub mod registry;
 pub mod webfetch;
+pub mod workshop;
 pub mod write;
 
 use anyhow::Result;
