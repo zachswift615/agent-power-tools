@@ -10,29 +10,68 @@ use std::io::{self, Write};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 /// Wrap text at word boundaries for a given terminal width
+/// Handles Unicode properly and breaks long words (URLs, hashes) at width boundaries
 fn wrap_text(text: &str, width: usize) -> String {
-    let mut result = String::new();
-    let mut current_line_len = 0;
+    let mut wrapped = String::new();
+    let mut current_line = String::new();
+    let mut current_width = 0;
 
     for word in text.split_whitespace() {
-        let word_len = word.len();
+        let word_len = word.chars().count(); // Unicode-aware
 
-        // Check if adding this word would exceed width
-        if current_line_len + word_len + 1 > width && current_line_len > 0 {
-            result.push('\n');
-            result.push_str(word);
-            current_line_len = word_len;
-        } else {
-            if current_line_len > 0 {
-                result.push(' ');
-                current_line_len += 1;
+        if current_width > 0 && current_width + 1 + word_len > width {
+            // Wrap to new line
+            wrapped.push_str(&current_line);
+            wrapped.push('\n');
+            current_line.clear();
+            current_width = 0;
+        }
+
+        if current_width > 0 {
+            current_line.push(' ');
+            current_width += 1;
+        }
+
+        // Handle very long words (URLs, hashes, etc.)
+        if word_len > width {
+            // Break at width boundary
+            let chars: Vec<char> = word.chars().collect();
+            let mut chunk_start = 0;
+
+            while chunk_start < chars.len() {
+                let remaining = width.saturating_sub(current_width);
+                let chunk_end = (chunk_start + remaining).min(chars.len());
+                let chunk: String = chars[chunk_start..chunk_end].iter().collect();
+
+                if current_width > 0 {
+                    wrapped.push_str(&current_line);
+                    wrapped.push('\n');
+                    current_line.clear();
+                    current_width = 0;
+                }
+
+                current_line.push_str(&chunk);
+                current_width = chunk_end - chunk_start;
+                chunk_start = chunk_end;
+
+                if chunk_start < chars.len() {
+                    wrapped.push_str(&current_line);
+                    wrapped.push('\n');
+                    current_line.clear();
+                    current_width = 0;
+                }
             }
-            result.push_str(word);
-            current_line_len += word_len;
+        } else {
+            current_line.push_str(word);
+            current_width += word_len;
         }
     }
 
-    result
+    if !current_line.is_empty() {
+        wrapped.push_str(&current_line);
+    }
+
+    wrapped
 }
 
 pub struct App {
@@ -523,5 +562,153 @@ impl App {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_word_wrapping_basic() {
+        let text = "This is a very long line that should wrap properly at word boundaries";
+        let wrapped = wrap_text(text, 20);
+
+        // Check no mid-word breaks
+        assert!(!wrapped.contains("boun daries"));
+        assert!(!wrapped.contains("wor d"));
+
+        // All lines should be <= 20 chars
+        for line in wrapped.lines() {
+            assert!(line.chars().count() <= 20, "Line too long: {}", line);
+        }
+    }
+
+    #[test]
+    fn test_word_wrapping_exact_fit() {
+        let text = "Hello world test wrap";
+        let wrapped = wrap_text(text, 11);
+
+        // "Hello world" = 11 chars, should be on one line
+        // "test wrap" should wrap to next lines
+        let lines: Vec<&str> = wrapped.lines().collect();
+        assert_eq!(lines[0], "Hello world");
+    }
+
+    #[test]
+    fn test_long_word_wrapping() {
+        let text = "Short https://verylongurlthatexceedsterminalwidthbyalot.com/path";
+        let wrapped = wrap_text(text, 20);
+
+        // Long URLs should break at width boundary
+        for line in wrapped.lines() {
+            assert!(line.chars().count() <= 20, "Line too long: '{}' ({})", line, line.chars().count());
+        }
+
+        // Should have multiple lines
+        assert!(wrapped.lines().count() > 2);
+    }
+
+    #[test]
+    fn test_unicode_wrapping() {
+        // Emoji are multi-byte but count as 1 character
+        let text = "Hello 🦀 Rust 🌟 is 💯 awesome";
+        let wrapped = wrap_text(text, 15);
+
+        for line in wrapped.lines() {
+            assert!(line.chars().count() <= 15, "Line too long: '{}' ({})", line, line.chars().count());
+        }
+
+        // Text should wrap at word boundaries, preserving full words
+        // "Hello 🦀 Rust 🌟" = 15 chars (fits exactly on one line)
+        // "is 💯 awesome" = 13 chars (fits on second line)
+        let lines: Vec<&str> = wrapped.lines().collect();
+        assert_eq!(lines.len(), 2, "Expected 2 lines, got: {:?}", lines);
+        assert_eq!(lines[0], "Hello 🦀 Rust 🌟");
+        assert_eq!(lines[1], "is 💯 awesome");
+    }
+
+    #[test]
+    fn test_unicode_long_word() {
+        // Japanese text with long URL
+        let text = "日本語 https://example.com/very/long/path/that/exceeds/width テスト";
+        let wrapped = wrap_text(text, 20);
+
+        for line in wrapped.lines() {
+            assert!(line.chars().count() <= 20, "Line too long: '{}' ({})", line, line.chars().count());
+        }
+    }
+
+    #[test]
+    fn test_empty_text() {
+        let wrapped = wrap_text("", 20);
+        assert_eq!(wrapped, "");
+    }
+
+    #[test]
+    fn test_single_word() {
+        let wrapped = wrap_text("Hello", 20);
+        assert_eq!(wrapped, "Hello");
+    }
+
+    #[test]
+    fn test_single_long_word() {
+        let word = "a".repeat(50);
+        let wrapped = wrap_text(&word, 20);
+
+        // Should break into chunks of 20
+        for line in wrapped.lines() {
+            assert!(line.chars().count() <= 20);
+        }
+
+        // Should have 3 lines (50 / 20 = 2.5, rounds to 3)
+        assert_eq!(wrapped.lines().count(), 3);
+    }
+
+    #[test]
+    fn test_hash_wrapping() {
+        // Test with git commit hash
+        let text = "Commit abc123def456ghi789jkl012mno345pqr678stu901vwx234yz567 found";
+        let wrapped = wrap_text(text, 20);
+
+        for line in wrapped.lines() {
+            assert!(line.chars().count() <= 20, "Line too long: '{}' ({})", line, line.chars().count());
+        }
+    }
+
+    #[test]
+    fn test_multiple_spaces() {
+        // Multiple spaces should be treated as single separator
+        let text = "Hello    world    test";
+        let wrapped = wrap_text(text, 20);
+
+        // Should not create empty words
+        assert!(!wrapped.contains("  "));
+    }
+
+    #[test]
+    fn test_width_one() {
+        // Edge case: width of 1
+        let text = "abc";
+        let wrapped = wrap_text(text, 1);
+
+        // Each character should be on its own line
+        assert_eq!(wrapped.lines().count(), 3);
+        assert_eq!(wrapped, "a\nb\nc");
+    }
+
+    #[test]
+    fn test_real_world_flask_output() {
+        // Simulate the user's Flask TODO example
+        let text = "The application is a TODO list manager using HTML templates and in-memory storage.";
+        let wrapped = wrap_text(text, 40);
+
+        // Should wrap properly without breaking "using HTML"
+        assert!(!wrapped.contains("usin g"));
+        assert!(!wrapped.contains("HT ML"));
+
+        for line in wrapped.lines() {
+            assert!(line.chars().count() <= 40);
+        }
     }
 }
