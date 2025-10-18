@@ -129,6 +129,16 @@ def create_model_and_tokenizer(model_name, max_seq_length, load_in_4bit, lora_ra
     print(f"✓ Base model loaded")
     print_gpu_memory()
 
+    # Set chat template for Qwen models if not already set
+    if tokenizer.chat_template is None:
+        # Use the standard Qwen2.5 chat template
+        from unsloth.chat_templates import get_chat_template
+        tokenizer = get_chat_template(
+            tokenizer,
+            chat_template="qwen-2.5",
+        )
+        print(f"✓ Chat template set for Qwen model")
+
     # Add LoRA adapters
     # We target attention and MLP layers for maximum impact
     model = FastLanguageModel.get_peft_model(
@@ -272,7 +282,6 @@ def main():
         load_best_model_at_end=False,  # Disable to save memory
 
         # Disable evaluation to save time and memory
-        evaluation_strategy="no",
     )
 
     # Step 6: Create trainer
