@@ -1,3 +1,4 @@
+use super::json_parser::JsonParser;
 use super::provider::{GenerationConfig, LLMProvider, LLMResponse, StreamEvent, StreamResult};
 use crate::types::{ContentBlock, Message, Role, StopReason, TokenUsage};
 use anyhow::{anyhow, Result};
@@ -12,6 +13,7 @@ pub struct OpenAICompatibleProvider {
     client: Client,
     api_base: String,
     api_key: Option<String>,
+    json_parser: JsonParser,
 }
 
 impl OpenAICompatibleProvider {
@@ -20,6 +22,7 @@ impl OpenAICompatibleProvider {
             client: Client::new(),
             api_base,
             api_key,
+            json_parser: JsonParser::new(),
         }
     }
 
@@ -199,10 +202,13 @@ impl LLMProvider for OpenAICompatibleProvider {
                     .and_then(|a| a.as_str())
                     .ok_or_else(|| anyhow::anyhow!("Tool call function missing arguments"))?;
 
-                // Parse arguments JSON string
-                let input: Value = serde_json::from_str(arguments_str)
+                // Parse arguments JSON string using robust parser
+                let input: Value = self.json_parser.parse_robust(arguments_str)
                     .unwrap_or_else(|e| {
-                        tracing::error!("Failed to parse tool arguments for tool '{}': {}. Raw arguments: {}", name, e, arguments_str);
+                        tracing::error!(
+                            "Failed to parse tool arguments for '{}': {}\nRaw: {}",
+                            name, e, arguments_str
+                        );
                         json!({})
                     });
 

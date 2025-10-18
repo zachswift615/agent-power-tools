@@ -1,3 +1,4 @@
+pub mod json_parser;
 pub mod openai;
 pub mod provider;
 
