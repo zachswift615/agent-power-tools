@@ -598,47 +598,95 @@ impl App {
         );
 
         // Calculate which line the cursor is on and the column within that line
-        // by simulating how Ratatui wraps the text
+        // by simulating how Ratatui wraps text (WORD boundaries, not character boundaries)
         let mut current_line = 0u16;
-        let mut chars_on_current_line = 0u16;
+        let mut column_on_line = 0u16;
         let mut chars_processed = 0usize;
 
-        for ch in self.input.chars() {
-            if chars_processed == self.cursor_position {
-                break;
-            }
+        // Split text into words and spaces
+        let mut current_pos = 0usize;
+        let chars: Vec<char> = self.input.chars().collect();
 
-            // Check character display width (some unicode chars are wider)
-            let char_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1) as u16;
+        while current_pos < chars.len() && current_pos < self.cursor_position {
+            // Find the next word (sequence of non-space chars) or space sequence
+            let word_start = current_pos;
+            let mut word_end = current_pos;
 
-            // Check if adding this character would exceed the line width
-            if chars_on_current_line + char_width > input_width {
-                // Wrap to next line
-                current_line += 1;
-                chars_on_current_line = char_width;
+            // If we're at a space, consume all consecutive spaces
+            if chars[current_pos] == ' ' {
+                while word_end < chars.len() && chars[word_end] == ' ' {
+                    word_end += 1;
+                }
             } else {
-                chars_on_current_line += char_width;
+                // Consume non-space characters (a word)
+                while word_end < chars.len() && chars[word_end] != ' ' {
+                    word_end += 1;
+                }
             }
 
-            chars_processed += 1;
+            // Calculate word width
+            let mut word_width = 0u16;
+            for i in word_start..word_end {
+                if i < chars.len() {
+                    word_width += unicode_width::UnicodeWidthChar::width(chars[i]).unwrap_or(1) as u16;
+                }
+            }
+
+            // Check if this word fits on current line
+            if column_on_line + word_width > input_width && column_on_line > 0 {
+                // Word doesn't fit, wrap to next line
+                current_line += 1;
+                column_on_line = 0;
+
+                // Unless the word itself is longer than a line, then we must break it
+                if word_width > input_width {
+                    // Word is too long, need to break it character by character
+                    for i in word_start..word_end {
+                        if current_pos >= self.cursor_position {
+                            break;
+                        }
+                        let char_width = unicode_width::UnicodeWidthChar::width(chars[i]).unwrap_or(1) as u16;
+                        if column_on_line + char_width > input_width {
+                            current_line += 1;
+                            column_on_line = char_width;
+                        } else {
+                            column_on_line += char_width;
+                        }
+                        current_pos += 1;
+                    }
+                    continue;
+                }
+            }
+
+            // Add word to current line
+            let chars_to_add = std::cmp::min(word_end - current_pos, self.cursor_position - current_pos);
+            for i in 0..chars_to_add {
+                let idx = current_pos + i;
+                if idx < chars.len() {
+                    let char_width = unicode_width::UnicodeWidthChar::width(chars[idx]).unwrap_or(1) as u16;
+                    column_on_line += char_width;
+                }
+            }
+            current_pos += chars_to_add;
         }
 
         // If cursor is exactly at the line edge, wrap to next line
-        if chars_on_current_line >= input_width {
+        if column_on_line >= input_width {
             current_line += 1;
-            chars_on_current_line = 0;
+            column_on_line = 0;
         }
 
-        let cursor_x = chunks[2].x + 1 + chars_on_current_line;
+        let cursor_x = chunks[2].x + 1 + column_on_line;
         let cursor_y = chunks[2].y + 1 + current_line;
 
         tracing::debug!(
-            "cursor render: line={}, col={}, x={}, y={}, input_width={}",
+            "cursor render: line={}, col={}, x={}, y={}, input_width={}, cursor_pos={}",
             current_line,
-            chars_on_current_line,
+            column_on_line,
             cursor_x,
             cursor_y,
-            input_width
+            input_width,
+            self.cursor_position
         );
 
         f.set_cursor_position((cursor_x, cursor_y));
