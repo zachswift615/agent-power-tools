@@ -28,4 +28,5 @@ pub enum UIUpdate {
     SessionSaved { session_id: String },
     SessionLoaded { session_id: String },
     SessionList { sessions: Vec<crate::session::SessionInfo> },
+    ConversationCleared, // Signal UI to clear displayed conversation
 }

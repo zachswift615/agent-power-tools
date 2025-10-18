@@ -42,9 +42,15 @@ impl Tool for BashTool {
     }
 
     async fn execute(&self, params: Value) -> Result<ToolResult> {
+        // Log the received params for debugging
+        tracing::debug!("BashTool received params: {:?}", params);
+
         let command = params["command"]
             .as_str()
-            .ok_or_else(|| anyhow::anyhow!("Missing 'command' parameter"))?;
+            .ok_or_else(|| {
+                tracing::error!("BashTool: Missing or invalid 'command' parameter. Received params: {:?}", params);
+                anyhow::anyhow!("Missing 'command' parameter. Received params: {}", params)
+            })?;
 
         let result = timeout(
             Duration::from_secs(self.timeout_seconds),

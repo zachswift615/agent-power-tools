@@ -1,65 +1,73 @@
 use crate::agent::messages::{Command, UIUpdate};
-use crate::ui::markdown::render_markdown;
 use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers, MouseEvent, MouseEventKind},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    cursor,
+    event::{self, Event, KeyCode, KeyModifiers},
+    execute, queue,
+    style::{Color, Print, ResetColor, SetForegroundColor},
+    terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType},
 };
-use ratatui::{
-    backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
-    Terminal,
-};
-use std::io;
+use std::io::{self, Write};
 use tokio::sync::mpsc::{Receiver, Sender};
 
-#[derive(Debug, Clone)]
-enum Message {
-    User(String),
-    Assistant(String),
-    AssistantStreaming(String), // Accumulating streaming text
-    Thinking, // "Thinking..." indicator
-    Tool(String),
-    Error(String),
+/// Wrap text at word boundaries for a given terminal width
+fn wrap_text(text: &str, width: usize) -> String {
+    let mut result = String::new();
+    let mut current_line_len = 0;
+
+    for word in text.split_whitespace() {
+        let word_len = word.len();
+
+        // Check if adding this word would exceed width
+        if current_line_len + word_len + 1 > width && current_line_len > 0 {
+            result.push('\n');
+            result.push_str(word);
+            current_line_len = word_len;
+        } else {
+            if current_line_len > 0 {
+                result.push(' ');
+                current_line_len += 1;
+            }
+            result.push_str(word);
+            current_line_len += word_len;
+        }
+    }
+
+    result
 }
 
 pub struct App {
-    conversation: Vec<Message>,
     input: String,
-    cursor_position: usize, // Position of cursor in input string
+    cursor_position: usize,
     cmd_tx: Sender<Command>,
     ui_rx: Receiver<UIUpdate>,
     should_quit: bool,
-    scroll_offset: u16,
-    auto_scroll_enabled: bool, // Track if we should auto-scroll to bottom
     current_session_id: Option<String>,
+    is_streaming: bool, // Track if currently receiving streaming text
+    streaming_buffer: String, // Accumulate streaming text for final wrap
     session_list: Vec<crate::session::SessionInfo>,
     show_session_list: bool,
     session_list_selected: usize,
+    input_needs_render: bool, // Track if input line needs re-rendering
 }
 
 impl App {
     pub fn new(cmd_tx: Sender<Command>, ui_rx: Receiver<UIUpdate>) -> Self {
         Self {
-            conversation: Vec::new(),
             input: String::new(),
             cursor_position: 0,
             cmd_tx,
             ui_rx,
             should_quit: false,
-            scroll_offset: 0,
-            auto_scroll_enabled: true, // Start with auto-scroll enabled
             current_session_id: None,
+            is_streaming: false,
+            streaming_buffer: String::new(),
             session_list: Vec::new(),
             show_session_list: false,
             session_list_selected: 0,
+            input_needs_render: true, // Render on first loop
         }
     }
 
-    /// Convert character position to byte position in the input string
     fn char_to_byte_pos(&self, char_pos: usize) -> usize {
         self.input
             .char_indices()
@@ -68,7 +76,6 @@ impl App {
             .unwrap_or(self.input.len())
     }
 
-    /// Get the length of input in characters (not bytes)
     fn input_char_len(&self) -> usize {
         self.input.chars().count()
     }
@@ -76,82 +83,129 @@ impl App {
     pub async fn run(&mut self) -> anyhow::Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen)?;
-        let backend = CrosstermBackend::new(stdout);
-        let mut terminal = Terminal::new(backend)?;
+
+        // Print welcome header
+        self.print_header(&mut stdout)?;
 
         while !self.should_quit {
             // Handle UI updates from agent
             while let Ok(update) = self.ui_rx.try_recv() {
-                self.handle_ui_update(update);
+                self.handle_ui_update(&mut stdout, update)?;
             }
 
-            // Render
-            terminal.draw(|f| self.render(f))?;
-
-            // Handle input
-            if event::poll(std::time::Duration::from_millis(100))? {
-                match event::read()? {
-                    Event::Key(key) => {
-                        self.handle_input(key).await?;
-                    }
-                    Event::Mouse(mouse) => {
-                        self.handle_mouse_input(mouse);
-                    }
-                    _ => {}
+            // Process ALL pending key events before rendering
+            // This prevents rendering after each character during paste operations
+            let mut had_input = false;
+            while event::poll(std::time::Duration::from_millis(0))? {
+                if let Event::Key(key) = event::read()? {
+                    self.handle_input(&mut stdout, key).await?;
+                    had_input = true;
                 }
+            }
+
+            // Render input line only after all input processed
+            if !self.show_session_list && self.input_needs_render {
+                self.render_input_line(&mut stdout)?;
+                self.input_needs_render = false;
+            }
+
+            // Wait a bit if no input (don't busy-loop)
+            if !had_input {
+                tokio::time::sleep(std::time::Duration::from_millis(16)).await;
             }
         }
 
         // Cleanup
         disable_raw_mode()?;
-        execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-        terminal.show_cursor()?;
+        writeln!(stdout)?;
+        stdout.flush()?;
 
         Ok(())
     }
 
-    fn handle_ui_update(&mut self, update: UIUpdate) {
+    fn print_header(&self, stdout: &mut impl Write) -> io::Result<()> {
+        queue!(
+            stdout,
+            SetForegroundColor(Color::Blue),
+            Print("Synthia v0.1.0\n"),
+            ResetColor,
+            Print("\n")
+        )?;
+        stdout.flush()
+    }
+
+    fn handle_ui_update(&mut self, stdout: &mut impl Write, update: UIUpdate) -> io::Result<()> {
         match update {
             UIUpdate::AssistantText(text) => {
-                // Non-streaming: add complete message at once
-                self.conversation.push(Message::Assistant(text));
-                self.auto_scroll_to_bottom();
+                self.clear_input_line(stdout)?;
+                self.is_streaming = false;
+
+                // Get terminal width and wrap text
+                let (width, _) = size()?;
+                let usable_width = (width as usize).saturating_sub(10); // -10 for "Synthia: " prefix
+                let wrapped = wrap_text(&text, usable_width);
+
+                queue!(
+                    stdout,
+                    SetForegroundColor(Color::Cyan),
+                    Print("Synthia: "),
+                    ResetColor
+                )?;
+                writeln!(stdout, "{}", wrapped)?;
+                writeln!(stdout)?;
+                stdout.flush()?;
+                self.input_needs_render = true;
             }
             UIUpdate::AssistantThinking => {
-                // Remove any previous thinking indicator
-                if let Some(Message::Thinking) = self.conversation.last() {
-                    self.conversation.pop();
-                }
-                self.conversation.push(Message::Thinking);
-                self.auto_scroll_to_bottom();
+                self.clear_input_line(stdout)?;
+                self.is_streaming = false;
+
+                queue!(
+                    stdout,
+                    SetForegroundColor(Color::DarkGrey),
+                    Print("Synthia: Thinking...\n"),
+                    ResetColor
+                )?;
+                stdout.flush()?;
             }
             UIUpdate::AssistantTextDelta(delta) => {
-                // Streaming: accumulate text incrementally
-                match self.conversation.last_mut() {
-                    Some(Message::Thinking) => {
-                        // Replace thinking indicator with first chunk
-                        *self.conversation.last_mut().unwrap() = Message::AssistantStreaming(delta);
-                    }
-                    Some(Message::AssistantStreaming(ref mut text)) => {
-                        // Append to existing streaming message
-                        text.push_str(&delta);
-                    }
-                    _ => {
-                        // Start new streaming message
-                        self.conversation.push(Message::AssistantStreaming(delta));
-                    }
+                if !self.is_streaming {
+                    // First chunk - clear input line and print "Thinking..." indicator
+                    self.clear_input_line(stdout)?;
+                    queue!(
+                        stdout,
+                        SetForegroundColor(Color::Cyan),
+                        Print("Synthia: "),
+                        SetForegroundColor(Color::DarkGrey),
+                        Print("Thinking..."),
+                        ResetColor
+                    )?;
+                    stdout.flush()?;
+                    self.is_streaming = true;
+                    self.streaming_buffer.clear();
                 }
-                self.auto_scroll_to_bottom();
+
+                // Just accumulate in buffer - don't print deltas
+                // We'll print the wrapped version at the end
+                self.streaming_buffer.push_str(&delta);
             }
             UIUpdate::ToolExecutionStarted { name, id: _ } => {
-                // Convert streaming message to final assistant message before tool execution
-                if let Some(Message::AssistantStreaming(text)) = self.conversation.last().cloned() {
-                    *self.conversation.last_mut().unwrap() = Message::Assistant(text);
+                self.clear_input_line(stdout)?;
+                self.is_streaming = false;
+
+                // Finalize streaming if needed
+                if self.is_streaming {
+                    writeln!(stdout)?;
+                    writeln!(stdout)?;
                 }
-                self.conversation
-                    .push(Message::Tool(format!("[Tool: {}] ⏳ Running...", name)));
-                self.auto_scroll_to_bottom();
+
+                queue!(
+                    stdout,
+                    SetForegroundColor(Color::Yellow),
+                    Print(format!("[Tool: {}] ⏳ Running...\n", name)),
+                    ResetColor
+                )?;
+                stdout.flush()?;
             }
             UIUpdate::ToolResult {
                 name,
@@ -161,44 +215,107 @@ impl App {
                 is_error,
                 duration_ms,
             } => {
-                if let Some(Message::Tool(ref mut text)) = self.conversation.last_mut() {
-                    // Format the tool result with input and output preview
-                    let status_icon = if is_error { "✗" } else { "✓" };
+                self.clear_input_line(stdout)?;
 
-                    // Extract key input params based on tool name
-                    let input_summary = Self::format_tool_input(&name, &input);
+                let status_icon = if is_error { "✗" } else { "✓" };
+                let color = if is_error { Color::Red } else { Color::Green };
 
-                    // Truncate output to first ~5 lines (approximately 200 chars)
-                    let output_lines: Vec<&str> = output.lines().take(5).collect();
-                    let output_preview = output_lines.join("\n");
-                    let has_more = output.lines().count() > 5 || output.len() > 200;
+                queue!(
+                    stdout,
+                    SetForegroundColor(Color::Yellow),
+                    Print(format!("[Tool: {}] ", name)),
+                    SetForegroundColor(color),
+                    Print(format!("{} ", status_icon)),
+                    ResetColor,
+                    Print(format!("{}ms", duration_ms))
+                )?;
 
-                    *text = format!(
-                        "[Tool: {}] {} {}ms{}\n  Output: {}{}",
-                        name,
-                        status_icon,
-                        duration_ms,
-                        input_summary,
-                        output_preview.trim(),
-                        if has_more { "\n  ..." } else { "" }
-                    );
+                // Show command if bash
+                if let Some(command) = input.get("command").and_then(|v| v.as_str()) {
+                    let truncated = if command.len() > 60 {
+                        format!("{}...", &command[..60])
+                    } else {
+                        command.to_string()
+                    };
+                    writeln!(stdout, "\n  Command: {}", truncated)?;
                 }
-                self.auto_scroll_to_bottom();
+
+                // Show output preview
+                let output_lines: Vec<&str> = output.lines().take(5).collect();
+                let output_preview = output_lines.join("\n");
+                let has_more = output.lines().count() > 5 || output.len() > 200;
+
+                if !output_preview.is_empty() {
+                    writeln!(stdout, "  Output: {}", output_preview.trim())?;
+                    if has_more {
+                        writeln!(stdout, "  ...")?;
+                    }
+                }
+
+                writeln!(stdout)?;
+                stdout.flush()?;
+                self.input_needs_render = true;
             }
             UIUpdate::Error(err) => {
-                self.conversation.push(Message::Error(err));
-                self.auto_scroll_to_bottom();
+                self.clear_input_line(stdout)?;
+                self.is_streaming = false;
+
+                // Finalize streaming if needed
+                if self.is_streaming {
+                    writeln!(stdout)?;
+                    writeln!(stdout)?;
+                }
+
+                queue!(
+                    stdout,
+                    SetForegroundColor(Color::Red),
+                    Print(format!("Error: {}\n", err)),
+                    ResetColor
+                )?;
+                writeln!(stdout)?;
+                stdout.flush()?;
+                self.input_needs_render = true;
             }
             UIUpdate::Complete => {
-                // Finalize streaming message if present
-                if let Some(Message::AssistantStreaming(text)) = self.conversation.last().cloned() {
-                    *self.conversation.last_mut().unwrap() = Message::Assistant(text);
+                // Finalize streaming with proper word wrapping
+                if self.is_streaming {
+                    // Get terminal width
+                    let (width, _) = size()?;
+                    let usable_width = (width as usize).saturating_sub(10); // -10 for "Synthia: " prefix
+
+                    // Wrap the accumulated text
+                    let wrapped = wrap_text(&self.streaming_buffer, usable_width);
+
+                    // Clear the unwrapped streaming output
+                    self.clear_input_line(stdout)?;
+
+                    // Re-print with proper wrapping
+                    queue!(
+                        stdout,
+                        SetForegroundColor(Color::Cyan),
+                        Print("Synthia: "),
+                        ResetColor
+                    )?;
+                    writeln!(stdout, "{}", wrapped)?;
+                    writeln!(stdout)?;
+
+                    self.is_streaming = false;
+                    self.streaming_buffer.clear();
+                    stdout.flush()?;
+                    self.input_needs_render = true;
                 }
             }
             UIUpdate::SessionSaved { session_id } => {
                 self.current_session_id = Some(session_id.clone());
-                self.conversation.push(Message::Tool(format!("[Session saved: {}]", session_id)));
-                self.auto_scroll_to_bottom();
+                self.clear_input_line(stdout)?;
+
+                queue!(
+                    stdout,
+                    SetForegroundColor(Color::Yellow),
+                    Print(format!("[Session saved: {}]\n", &session_id[..session_id.len().min(20)])),
+                    ResetColor
+                )?;
+                stdout.flush()?;
             }
             UIUpdate::SessionLoaded { session_id } => {
                 self.current_session_id = Some(session_id);
@@ -208,108 +325,117 @@ impl App {
                 self.session_list = sessions;
                 self.show_session_list = true;
                 self.session_list_selected = 0;
+                self.render_session_list(stdout)?;
+            }
+            UIUpdate::ConversationCleared => {
+                // Clear screen
+                execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                self.print_header(stdout)?;
+                stdout.flush()?;
             }
         }
+
+        Ok(())
     }
 
-    fn auto_scroll_to_bottom(&mut self) {
-        // Enable auto-scroll mode and reset offset to ensure we're at the bottom
-        self.auto_scroll_enabled = true;
-        self.scroll_offset = 0;
+    fn clear_input_line(&self, stdout: &mut impl Write) -> io::Result<()> {
+        // Move to beginning of line and clear it
+        queue!(
+            stdout,
+            Print("\r"),
+            Clear(ClearType::CurrentLine)
+        )?;
+        Ok(())
     }
 
-    /// Format tool input parameters for display
-    fn format_tool_input(tool_name: &str, input: &serde_json::Value) -> String {
-        // Extract relevant parameters based on tool type
-        match tool_name {
-            "bash" => {
-                // For bash tool, show the command
-                if let Some(command) = input.get("command").and_then(|v| v.as_str()) {
-                    let truncated = if command.len() > 60 {
-                        format!("{}...", &command[..60])
-                    } else {
-                        command.to_string()
-                    };
-                    format!("\n  Command: {}", truncated)
-                } else {
-                    String::new()
-                }
+    fn render_input_line(&self, stdout: &mut impl Write) -> io::Result<()> {
+        // Clear current line
+        self.clear_input_line(stdout)?;
+
+        // Print prompt and input
+        queue!(
+            stdout,
+            SetForegroundColor(Color::Green),
+            Print("You: "),
+            ResetColor,
+            Print(&self.input)
+        )?;
+
+        // Move cursor to correct position
+        let prompt_len = 5; // "You: ".len()
+        let cursor_x = prompt_len + self.cursor_position;
+        queue!(stdout, Print("\r"), cursor::MoveRight(cursor_x as u16))?;
+
+        stdout.flush()
+    }
+
+    fn render_session_list(&self, stdout: &mut impl Write) -> io::Result<()> {
+        self.clear_input_line(stdout)?;
+
+        writeln!(stdout, "\n=== Load Session (↑/↓ navigate | Enter select | Esc cancel) ===")?;
+
+        for (idx, session) in self.session_list.iter().enumerate() {
+            let selected = if idx == self.session_list_selected { ">" } else { " " };
+            let timestamp = chrono::DateTime::from_timestamp(session.last_modified, 0)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            if idx == self.session_list_selected {
+                queue!(stdout, SetForegroundColor(Color::Cyan))?;
             }
-            "read" => {
-                // For read tool, show the file path
-                if let Some(file_path) = input.get("file_path").and_then(|v| v.as_str()) {
-                    format!("\n  File: {}", file_path)
-                } else {
-                    String::new()
-                }
-            }
-            "write" | "edit" => {
-                // For write/edit tools, show the file path
-                if let Some(file_path) = input.get("file_path").and_then(|v| v.as_str()) {
-                    format!("\n  File: {}", file_path)
-                } else {
-                    String::new()
-                }
-            }
-            "grep" => {
-                // For grep, show the pattern
-                if let Some(pattern) = input.get("pattern").and_then(|v| v.as_str()) {
-                    let truncated = if pattern.len() > 40 {
-                        format!("{}...", &pattern[..40])
-                    } else {
-                        pattern.to_string()
-                    };
-                    format!("\n  Pattern: {}", truncated)
-                } else {
-                    String::new()
-                }
-            }
-            "glob" => {
-                // For glob, show the pattern
-                if let Some(pattern) = input.get("pattern").and_then(|v| v.as_str()) {
-                    format!("\n  Pattern: {}", pattern)
-                } else {
-                    String::new()
-                }
-            }
-            _ => {
-                // For other tools, don't show input details to keep it compact
-                String::new()
+
+            writeln!(
+                stdout,
+                "{} {} - {} msgs - {}",
+                selected,
+                timestamp,
+                session.message_count,
+                &session.id[..session.id.len().min(30)]
+            )?;
+
+            if idx == self.session_list_selected {
+                queue!(stdout, ResetColor)?;
             }
         }
+
+        writeln!(stdout)?;
+        stdout.flush()
     }
 
-    async fn handle_input(
-        &mut self,
-        key: event::KeyEvent,
-    ) -> anyhow::Result<()> {
-        // Handle session list navigation when visible
+    async fn handle_input(&mut self, stdout: &mut impl Write, key: event::KeyEvent) -> anyhow::Result<()> {
+        // Handle session list navigation
         if self.show_session_list {
             match key.code {
                 KeyCode::Up => {
                     if self.session_list_selected > 0 {
                         self.session_list_selected -= 1;
+                        self.render_session_list(stdout)?;
                     }
                     return Ok(());
                 }
                 KeyCode::Down => {
                     if self.session_list_selected < self.session_list.len().saturating_sub(1) {
                         self.session_list_selected += 1;
+                        self.render_session_list(stdout)?;
                     }
                     return Ok(());
                 }
                 KeyCode::Enter => {
                     if let Some(session) = self.session_list.get(self.session_list_selected) {
                         self.cmd_tx.send(Command::LoadSession(session.id.clone())).await?;
-                        self.conversation.clear();
+                        self.show_session_list = false;
+                        execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                        self.print_header(stdout)?;
                     }
                     return Ok(());
                 }
                 KeyCode::Esc => {
                     self.show_session_list = false;
+                    execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                    self.print_header(stdout)?;
                     return Ok(());
                 }
-                _ => {}
+                _ => return Ok(()),
             }
         }
 
@@ -323,799 +449,79 @@ impl App {
                 self.should_quit = true;
             }
             (KeyCode::Char('s'), KeyModifiers::CONTROL) => {
-                // Manually save session
                 self.cmd_tx.send(Command::SaveSession).await?;
             }
             (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
-                // Start new session
                 self.cmd_tx.send(Command::NewSession).await?;
-                self.conversation.clear();
             }
             (KeyCode::Char('l'), KeyModifiers::CONTROL) => {
-                // List and load session
                 self.cmd_tx.send(Command::ListSessions).await?;
             }
             (KeyCode::Enter, _) => {
                 if !self.input.is_empty() {
                     let msg = self.input.clone();
-                    self.conversation.push(Message::User(msg.clone()));
+
+                    // Clear input line and print user message
+                    self.clear_input_line(stdout)?;
+                    queue!(
+                        stdout,
+                        SetForegroundColor(Color::Green),
+                        Print("You: "),
+                        ResetColor
+                    )?;
+                    writeln!(stdout, "{}", msg)?;
+                    writeln!(stdout)?;
+                    stdout.flush()?;
+
                     self.cmd_tx.send(Command::SendMessage(msg)).await?;
                     self.input.clear();
                     self.cursor_position = 0;
-                    self.auto_scroll_to_bottom();
                 }
-            }
-            (KeyCode::Up, KeyModifiers::CONTROL) => {
-                // Scroll up - disable auto-scroll when user manually scrolls
-                self.auto_scroll_enabled = false;
-                self.scroll_offset = self.scroll_offset.saturating_add(1);
-            }
-            (KeyCode::Down, KeyModifiers::CONTROL) => {
-                // Scroll down
-                self.scroll_offset = self.scroll_offset.saturating_sub(1);
-                // Re-enable auto-scroll if we've scrolled back to bottom (offset = 0)
-                if self.scroll_offset == 0 {
-                    self.auto_scroll_enabled = true;
-                }
-            }
-            (KeyCode::Left, KeyModifiers::ALT) => {
-                // Option/Alt + Left: Jump to beginning of previous word
-                if self.cursor_position > 0 {
-                    let chars: Vec<char> = self.input.chars().collect();
-                    let mut pos = self.cursor_position;
-
-                    // Skip any spaces to the left
-                    while pos > 0 && chars[pos - 1] == ' ' {
-                        pos -= 1;
-                    }
-
-                    // Skip the word to the left
-                    while pos > 0 && chars[pos - 1] != ' ' {
-                        pos -= 1;
-                    }
-
-                    self.cursor_position = pos;
-                }
-                tracing::debug!(
-                    "Left word jump: cursor_pos={}, char_len={}",
-                    self.cursor_position,
-                    self.input_char_len()
-                );
             }
             (KeyCode::Left, _) => {
-                // Move cursor left
                 if self.cursor_position > 0 {
                     self.cursor_position -= 1;
+                    self.input_needs_render = true;
                 }
-                tracing::debug!(
-                    "Left arrow: cursor_pos={}, char_len={}",
-                    self.cursor_position,
-                    self.input_char_len()
-                );
-            }
-            (KeyCode::Right, KeyModifiers::ALT) => {
-                // Option/Alt + Right: Jump to end of next word
-                let char_len = self.input_char_len();
-                if self.cursor_position < char_len {
-                    let chars: Vec<char> = self.input.chars().collect();
-                    let mut pos = self.cursor_position;
-
-                    // Skip any spaces to the right
-                    while pos < chars.len() && chars[pos] == ' ' {
-                        pos += 1;
-                    }
-
-                    // Skip the word to the right
-                    while pos < chars.len() && chars[pos] != ' ' {
-                        pos += 1;
-                    }
-
-                    self.cursor_position = pos;
-                }
-                tracing::debug!(
-                    "Right word jump: cursor_pos={}, char_len={}",
-                    self.cursor_position,
-                    self.input_char_len()
-                );
             }
             (KeyCode::Right, _) => {
-                // Move cursor right
-                let char_len = self.input_char_len();
-                tracing::debug!(
-                    "Right arrow BEFORE: cursor_pos={}, char_len={}, can_move={}",
-                    self.cursor_position,
-                    char_len,
-                    self.cursor_position < char_len
-                );
-                if self.cursor_position < char_len {
+                if self.cursor_position < self.input_char_len() {
                     self.cursor_position += 1;
+                    self.input_needs_render = true;
                 }
-                tracing::debug!(
-                    "Right arrow AFTER: cursor_pos={}",
-                    self.cursor_position
-                );
             }
-            (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
-                // Ctrl+A: Jump to start of input (Emacs/Unix style)
+            (KeyCode::Home, _) | (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
                 self.cursor_position = 0;
+                self.input_needs_render = true;
             }
-            (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
-                // Ctrl+E: Jump to end of input (Emacs/Unix style)
+            (KeyCode::End, _) | (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
                 self.cursor_position = self.input_char_len();
-            }
-            (KeyCode::Char('b'), KeyModifiers::ALT) => {
-                // Option/Alt + B: Jump to beginning of previous word (Emacs style)
-                if self.cursor_position > 0 {
-                    let chars: Vec<char> = self.input.chars().collect();
-                    let mut pos = self.cursor_position;
-
-                    // Skip any spaces to the left
-                    while pos > 0 && chars[pos - 1] == ' ' {
-                        pos -= 1;
-                    }
-
-                    // Skip the word to the left
-                    while pos > 0 && chars[pos - 1] != ' ' {
-                        pos -= 1;
-                    }
-
-                    self.cursor_position = pos;
-                }
-                tracing::debug!(
-                    "Left word jump (Alt+B): cursor_pos={}, char_len={}",
-                    self.cursor_position,
-                    self.input_char_len()
-                );
-            }
-            (KeyCode::Char('f'), KeyModifiers::ALT) => {
-                // Option/Alt + F: Jump to end of next word (Emacs style)
-                let char_len = self.input_char_len();
-                if self.cursor_position < char_len {
-                    let chars: Vec<char> = self.input.chars().collect();
-                    let mut pos = self.cursor_position;
-
-                    // Skip any spaces to the right
-                    while pos < chars.len() && chars[pos] == ' ' {
-                        pos += 1;
-                    }
-
-                    // Skip the word to the right
-                    while pos < chars.len() && chars[pos] != ' ' {
-                        pos += 1;
-                    }
-
-                    self.cursor_position = pos;
-                }
-                tracing::debug!(
-                    "Right word jump (Alt+F): cursor_pos={}, char_len={}",
-                    self.cursor_position,
-                    self.input_char_len()
-                );
-            }
-            (KeyCode::Home, _) => {
-                // Jump to start of input
-                self.cursor_position = 0;
-            }
-            (KeyCode::End, _) => {
-                // Jump to end of input
-                self.cursor_position = self.input_char_len();
+                self.input_needs_render = true;
             }
             (KeyCode::Char(c), _) => {
-                // Insert at cursor position
                 let byte_pos = self.char_to_byte_pos(self.cursor_position);
                 self.input.insert(byte_pos, c);
                 self.cursor_position += 1;
-                // Safety: ensure cursor doesn't exceed input length
-                self.cursor_position = self.cursor_position.min(self.input_char_len());
-                tracing::debug!(
-                    "Char inserted '{}': cursor_pos={}, char_len={}",
-                    c,
-                    self.cursor_position,
-                    self.input_char_len()
-                );
+                self.input_needs_render = true;
             }
             (KeyCode::Backspace, _) => {
-                // Delete character before cursor
                 if self.cursor_position > 0 {
                     self.cursor_position -= 1;
                     let byte_pos = self.char_to_byte_pos(self.cursor_position);
                     self.input.remove(byte_pos);
-                    // Safety: ensure cursor doesn't exceed input length
-                    self.cursor_position = self.cursor_position.min(self.input_char_len());
+                    self.input_needs_render = true;
                 }
             }
             (KeyCode::Delete, _) => {
-                // Delete character after cursor
-                let char_len = self.input_char_len();
-                if self.cursor_position < char_len {
+                if self.cursor_position < self.input_char_len() {
                     let byte_pos = self.char_to_byte_pos(self.cursor_position);
                     self.input.remove(byte_pos);
-                    // Safety: ensure cursor doesn't exceed input length
-                    self.cursor_position = self.cursor_position.min(self.input_char_len());
+                    self.input_needs_render = true;
                 }
             }
             _ => {}
         }
+
         Ok(())
-    }
-
-    fn handle_mouse_input(&mut self, mouse: MouseEvent) {
-        // Note: Mouse capture is disabled to allow terminal text selection.
-        // This handler won't receive events, but is kept for potential future use.
-        match mouse.kind {
-            MouseEventKind::ScrollUp => {
-                // Scroll up in message history (3 lines per scroll event for smooth scrolling)
-                self.auto_scroll_enabled = false;
-                self.scroll_offset = self.scroll_offset.saturating_add(3);
-            }
-            MouseEventKind::ScrollDown => {
-                // Scroll down in message history (3 lines per scroll event)
-                self.scroll_offset = self.scroll_offset.saturating_sub(3);
-                // Re-enable auto-scroll if we've scrolled back to bottom (offset = 0)
-                if self.scroll_offset == 0 {
-                    self.auto_scroll_enabled = true;
-                }
-            }
-            _ => {
-                // Ignore other mouse events (clicks, drag, etc.)
-            }
-        }
-    }
-
-    fn render(&self, f: &mut ratatui::Frame) {
-        // Calculate dynamic height for input based on text length
-        // Account for block borders (2 chars for left+right border = 2, no padding)
-        let input_width = f.area().width.saturating_sub(2); // Subtract borders only
-        let input_lines = if self.input.is_empty() {
-            1
-        } else {
-            (self.input_char_len() as u16 / input_width.max(1)) + 1
-        };
-        let input_height = (input_lines + 2).min(10); // +2 for borders, max 10 lines
-
-        tracing::debug!(
-            "render: terminal_width={}, input_width={}, cursor_pos={}, char_len={}",
-            f.area().width,
-            input_width,
-            self.cursor_position,
-            self.input_char_len()
-        );
-
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(3),
-                Constraint::Min(0),
-                Constraint::Length(input_height),
-            ])
-            .split(f.area());
-
-        // Status bar with session info
-        let session_info = if let Some(ref session_id) = self.current_session_id {
-            format!(" | Session: {}", &session_id[..session_id.len().min(20)])
-        } else {
-            String::new()
-        };
-        let status_text = format!(
-            "Synthia v0.1.0 (^↑/^↓ scroll | ^S save | ^N new | ^L load){}",
-            session_info
-        );
-        let status = Paragraph::new(status_text)
-            .style(Style::default().bg(Color::Blue).fg(Color::White))
-            .block(Block::default().borders(Borders::ALL));
-        f.render_widget(status, chunks[0]);
-
-        // Conversation - render messages with markdown support
-        let mut lines: Vec<Line> = Vec::new();
-
-        for msg in &self.conversation {
-            match msg {
-                Message::User(text) => {
-                    lines.push(Line::from(vec![
-                        Span::styled("User: ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-                        Span::raw(text),
-                    ]));
-                    lines.push(Line::from("")); // Empty line for spacing
-                }
-                Message::Assistant(text) => {
-                    lines.push(Line::from(
-                        Span::styled("Synthia:", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-                    ));
-
-                    // Use custom markdown renderer
-                    let markdown_lines = render_markdown(text);
-                    for line in markdown_lines {
-                        lines.push(line);
-                    }
-                    lines.push(Line::from("")); // Empty line for spacing
-                }
-                Message::AssistantStreaming(text) => {
-                    // Display streaming text with a cursor indicator
-                    lines.push(Line::from(
-                        Span::styled("Synthia:", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-                    ));
-
-                    // Use custom markdown renderer for streaming text
-                    let markdown_lines = render_markdown(text);
-                    for line in markdown_lines {
-                        lines.push(line);
-                    }
-                    // Add a blinking cursor to indicate streaming
-                    lines.push(Line::from(
-                        Span::styled("▊", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
-                    ));
-                    lines.push(Line::from("")); // Empty line for spacing
-                }
-                Message::Thinking => {
-                    lines.push(Line::from(
-                        Span::styled("Synthia: Thinking...", Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC))
-                    ));
-                    lines.push(Line::from("")); // Empty line for spacing
-                }
-                Message::Tool(text) => {
-                    lines.push(Line::from(
-                        Span::styled(text, Style::default().fg(Color::Yellow))
-                    ));
-                }
-                Message::Error(text) => {
-                    lines.push(Line::from(
-                        Span::styled(format!("Error: {}", text), Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
-                    ));
-                    lines.push(Line::from("")); // Empty line for spacing
-                }
-            }
-        }
-
-        // Calculate scroll position
-        // If auto-scroll is enabled, show the bottom of the conversation
-        let scroll_offset = if self.auto_scroll_enabled {
-            let total_lines = lines.len() as u16;
-            let visible_height = chunks[1].height.saturating_sub(2); // Subtract borders
-            total_lines.saturating_sub(visible_height)
-        } else {
-            self.scroll_offset
-        };
-
-        let conversation = Paragraph::new(lines)
-            .block(Block::default().borders(Borders::ALL).title("Conversation"))
-            .wrap(Wrap { trim: false })
-            .scroll((scroll_offset, 0));
-        f.render_widget(conversation, chunks[1]);
-
-        // Input with wrapping support
-        let input = Paragraph::new(self.input.as_str())
-            .block(Block::default().borders(Borders::ALL).title("Input"))
-            .wrap(Wrap { trim: false });
-        f.render_widget(input, chunks[2]);
-
-        // Set cursor position in the input field
-        // Calculate cursor position accounting for text wrapping
-        // We need to account for how text actually wraps, not just simple division
-
-        // Log the input text with position markers for debugging
-        tracing::debug!(
-            "input text: '{}'",
-            self.input
-        );
-        tracing::debug!(
-            "cursor at char position: {}/{}",
-            self.cursor_position,
-            self.input_char_len()
-        );
-
-        // Calculate which line the cursor is on and the column within that line
-        // by simulating how Ratatui wraps text (WORD boundaries, not character boundaries)
-        let mut current_line = 0u16;
-        let mut column_on_line = 0u16;
-        let mut chars_processed = 0usize;
-
-        // Split text into words and spaces
-        let mut current_pos = 0usize;
-        let chars: Vec<char> = self.input.chars().collect();
-
-        while current_pos < chars.len() && current_pos < self.cursor_position {
-            // Find the next word (sequence of non-space chars) or space sequence
-            let word_start = current_pos;
-            let mut word_end = current_pos;
-
-            // If we're at a space, consume all consecutive spaces
-            if chars[current_pos] == ' ' {
-                while word_end < chars.len() && chars[word_end] == ' ' {
-                    word_end += 1;
-                }
-            } else {
-                // Consume non-space characters (a word)
-                while word_end < chars.len() && chars[word_end] != ' ' {
-                    word_end += 1;
-                }
-            }
-
-            // Calculate word width
-            let mut word_width = 0u16;
-            for i in word_start..word_end {
-                if i < chars.len() {
-                    word_width += unicode_width::UnicodeWidthChar::width(chars[i]).unwrap_or(1) as u16;
-                }
-            }
-
-            // Check if this word fits on current line
-            if column_on_line + word_width > input_width && column_on_line > 0 {
-                // Word doesn't fit, wrap to next line
-                current_line += 1;
-                column_on_line = 0;
-
-                // Unless the word itself is longer than a line, then we must break it
-                if word_width > input_width {
-                    // Word is too long, need to break it character by character
-                    for i in word_start..word_end {
-                        if current_pos >= self.cursor_position {
-                            break;
-                        }
-                        let char_width = unicode_width::UnicodeWidthChar::width(chars[i]).unwrap_or(1) as u16;
-                        if column_on_line + char_width > input_width {
-                            current_line += 1;
-                            column_on_line = char_width;
-                        } else {
-                            column_on_line += char_width;
-                        }
-                        current_pos += 1;
-                    }
-                    continue;
-                }
-            }
-
-            // Add word to current line
-            let chars_to_add = std::cmp::min(word_end - current_pos, self.cursor_position - current_pos);
-            for i in 0..chars_to_add {
-                let idx = current_pos + i;
-                if idx < chars.len() {
-                    let char_width = unicode_width::UnicodeWidthChar::width(chars[idx]).unwrap_or(1) as u16;
-                    column_on_line += char_width;
-                }
-            }
-            current_pos += chars_to_add;
-        }
-
-        // If cursor is exactly at the line edge, wrap to next line
-        if column_on_line >= input_width {
-            current_line += 1;
-            column_on_line = 0;
-        }
-
-        let cursor_x = chunks[2].x + 1 + column_on_line;
-        let cursor_y = chunks[2].y + 1 + current_line;
-
-        tracing::debug!(
-            "cursor render: line={}, col={}, x={}, y={}, input_width={}, cursor_pos={}",
-            current_line,
-            column_on_line,
-            cursor_x,
-            cursor_y,
-            input_width,
-            self.cursor_position
-        );
-
-        f.set_cursor_position((cursor_x, cursor_y));
-
-        // Session list overlay (if showing)
-        if self.show_session_list {
-            use ratatui::widgets::{List, ListItem};
-
-            // Create a centered overlay
-            let popup_area = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Percentage(20),
-                    Constraint::Percentage(60),
-                    Constraint::Percentage(20),
-                ])
-                .split(f.area())[1];
-
-            let popup_area = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([
-                    Constraint::Percentage(10),
-                    Constraint::Percentage(80),
-                    Constraint::Percentage(10),
-                ])
-                .split(popup_area)[1];
-
-            // Create list items
-            let items: Vec<ListItem> = self.session_list.iter().enumerate().map(|(idx, session)| {
-                let style = if idx == self.session_list_selected {
-                    Style::default().bg(Color::White).fg(Color::Black)
-                } else {
-                    Style::default()
-                };
-
-                let timestamp = chrono::DateTime::from_timestamp(session.last_modified, 0)
-                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-                    .unwrap_or_else(|| "Unknown".to_string());
-
-                let text = format!(
-                    "{} - {} msgs - {}",
-                    timestamp,
-                    session.message_count,
-                    &session.id[..session.id.len().min(30)]
-                );
-
-                ListItem::new(text).style(style)
-            }).collect();
-
-            let list = List::new(items)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title("Load Session (↑/↓ navigate | Enter select | Esc cancel)")
-                        .style(Style::default().bg(Color::Black))
-                );
-
-            f.render_widget(list, popup_area);
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_auto_scroll_to_bottom() {
-        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
-        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
-        let mut app = App::new(cmd_tx, ui_rx);
-
-        // Disable auto-scroll
-        app.auto_scroll_enabled = false;
-
-        // Auto scroll should enable auto-scroll mode
-        app.auto_scroll_to_bottom();
-        assert!(app.auto_scroll_enabled, "Auto-scroll should be enabled");
-    }
-
-    #[test]
-    fn test_message_types() {
-        let msg_user = Message::User("test".to_string());
-        let msg_assistant = Message::Assistant("test".to_string());
-        let msg_streaming = Message::AssistantStreaming("test".to_string());
-        let msg_thinking = Message::Thinking;
-        let msg_tool = Message::Tool("test".to_string());
-        let msg_error = Message::Error("test".to_string());
-
-        // Just verify they can be created
-        assert!(matches!(msg_user, Message::User(_)));
-        assert!(matches!(msg_assistant, Message::Assistant(_)));
-        assert!(matches!(msg_streaming, Message::AssistantStreaming(_)));
-        assert!(matches!(msg_thinking, Message::Thinking));
-        assert!(matches!(msg_tool, Message::Tool(_)));
-        assert!(matches!(msg_error, Message::Error(_)));
-    }
-
-    #[test]
-    fn test_scroll_offset_operations() {
-        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
-        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
-        let mut app = App::new(cmd_tx, ui_rx);
-
-        // Initial offset is 0
-        assert_eq!(app.scroll_offset, 0);
-
-        // Scroll up
-        app.scroll_offset = app.scroll_offset.saturating_add(5);
-        assert_eq!(app.scroll_offset, 5);
-
-        // Scroll down
-        app.scroll_offset = app.scroll_offset.saturating_sub(2);
-        assert_eq!(app.scroll_offset, 3);
-
-        // Scroll down past 0 (should stop at 0)
-        app.scroll_offset = app.scroll_offset.saturating_sub(10);
-        assert_eq!(app.scroll_offset, 0);
-    }
-
-    #[test]
-    fn test_ui_update_adds_messages() {
-        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
-        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
-        let mut app = App::new(cmd_tx, ui_rx);
-
-        // Initially no messages
-        assert_eq!(app.conversation.len(), 0);
-
-        // Add assistant message
-        app.handle_ui_update(UIUpdate::AssistantText("Hello".to_string()));
-        assert_eq!(app.conversation.len(), 1);
-        assert!(matches!(app.conversation[0], Message::Assistant(_)));
-
-        // Add error message
-        app.handle_ui_update(UIUpdate::Error("Error occurred".to_string()));
-        assert_eq!(app.conversation.len(), 2);
-        assert!(matches!(app.conversation[1], Message::Error(_)));
-
-        // Add tool message
-        app.handle_ui_update(UIUpdate::ToolExecutionStarted {
-            name: "TestTool".to_string(),
-            id: "123".to_string(),
-        });
-        assert_eq!(app.conversation.len(), 3);
-        assert!(matches!(app.conversation[2], Message::Tool(_)));
-    }
-
-    #[test]
-    fn test_auto_scroll_on_new_messages() {
-        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
-        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
-        let mut app = App::new(cmd_tx, ui_rx);
-
-        // Disable auto-scroll (simulating user scrolling up)
-        app.auto_scroll_enabled = false;
-
-        // New assistant message should enable auto-scroll
-        app.handle_ui_update(UIUpdate::AssistantText("New message".to_string()));
-        assert!(app.auto_scroll_enabled, "Should enable auto-scroll on new assistant message");
-
-        // Disable again
-        app.auto_scroll_enabled = false;
-
-        // New error message should also enable auto-scroll
-        app.handle_ui_update(UIUpdate::Error("Error".to_string()));
-        assert!(app.auto_scroll_enabled, "Should enable auto-scroll on error message");
-
-        // Disable again
-        app.auto_scroll_enabled = false;
-
-        // Tool execution should enable auto-scroll
-        app.handle_ui_update(UIUpdate::ToolExecutionStarted {
-            name: "Tool".to_string(),
-            id: "1".to_string(),
-        });
-        assert!(app.auto_scroll_enabled, "Should enable auto-scroll on tool execution");
-    }
-
-    #[test]
-    fn test_manual_scroll_behavior() {
-        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
-        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
-        let mut app = App::new(cmd_tx, ui_rx);
-
-        // Initially auto-scroll is enabled
-        assert!(app.auto_scroll_enabled);
-
-        // Scrolling up should disable auto-scroll
-        app.scroll_offset = 0;
-        app.scroll_offset = app.scroll_offset.saturating_add(1);
-        app.auto_scroll_enabled = false; // Simulating Up key behavior
-        assert!(!app.auto_scroll_enabled, "Manual scroll up should disable auto-scroll");
-        assert_eq!(app.scroll_offset, 1);
-
-        // Scrolling down to 0 should re-enable auto-scroll
-        app.scroll_offset = app.scroll_offset.saturating_sub(1);
-        if app.scroll_offset == 0 {
-            app.auto_scroll_enabled = true; // Simulating Down key behavior
-        }
-        assert!(app.auto_scroll_enabled, "Scrolling back to bottom should re-enable auto-scroll");
-    }
-
-    #[test]
-    fn test_typing_doesnt_affect_scroll() {
-        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
-        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
-        let mut app = App::new(cmd_tx, ui_rx);
-
-        // Scroll up and disable auto-scroll
-        app.auto_scroll_enabled = false;
-        app.scroll_offset = 10;
-
-        // Type some characters
-        app.input.push('h');
-        app.input.push('e');
-        app.input.push('l');
-        app.input.push('l');
-        app.input.push('o');
-
-        // Scroll position should not change
-        assert_eq!(app.scroll_offset, 10, "Typing should not affect scroll position");
-        assert!(!app.auto_scroll_enabled, "Typing should not enable auto-scroll");
-    }
-
-    #[test]
-    fn test_mouse_scroll_up() {
-        use crossterm::event::{MouseEvent, MouseEventKind};
-
-        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
-        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
-        let mut app = App::new(cmd_tx, ui_rx);
-
-        // Initially auto-scroll is enabled
-        assert!(app.auto_scroll_enabled);
-        assert_eq!(app.scroll_offset, 0);
-
-        // Simulate mouse scroll up
-        let mouse_event = MouseEvent {
-            kind: MouseEventKind::ScrollUp,
-            column: 0,
-            row: 0,
-            modifiers: KeyModifiers::empty(),
-        };
-        app.handle_mouse_input(mouse_event);
-
-        // Should disable auto-scroll and increase offset by 3
-        assert!(!app.auto_scroll_enabled, "Mouse scroll up should disable auto-scroll");
-        assert_eq!(app.scroll_offset, 3, "Mouse scroll up should increase offset by 3");
-    }
-
-    #[test]
-    fn test_mouse_scroll_down() {
-        use crossterm::event::{MouseEvent, MouseEventKind};
-
-        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
-        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
-        let mut app = App::new(cmd_tx, ui_rx);
-
-        // Set up initial state with scroll offset
-        app.auto_scroll_enabled = false;
-        app.scroll_offset = 10;
-
-        // Simulate mouse scroll down
-        let mouse_event = MouseEvent {
-            kind: MouseEventKind::ScrollDown,
-            column: 0,
-            row: 0,
-            modifiers: KeyModifiers::empty(),
-        };
-        app.handle_mouse_input(mouse_event);
-
-        // Should decrease offset by 3
-        assert_eq!(app.scroll_offset, 7, "Mouse scroll down should decrease offset by 3");
-        assert!(!app.auto_scroll_enabled, "Should not enable auto-scroll yet");
-    }
-
-    #[test]
-    fn test_mouse_scroll_down_to_bottom() {
-        use crossterm::event::{MouseEvent, MouseEventKind};
-
-        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
-        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
-        let mut app = App::new(cmd_tx, ui_rx);
-
-        // Set up initial state with small scroll offset
-        app.auto_scroll_enabled = false;
-        app.scroll_offset = 2;
-
-        // Simulate mouse scroll down
-        let mouse_event = MouseEvent {
-            kind: MouseEventKind::ScrollDown,
-            column: 0,
-            row: 0,
-            modifiers: KeyModifiers::empty(),
-        };
-        app.handle_mouse_input(mouse_event);
-
-        // Should reach offset 0 and re-enable auto-scroll
-        assert_eq!(app.scroll_offset, 0, "Should saturate at 0");
-        assert!(app.auto_scroll_enabled, "Should re-enable auto-scroll when reaching bottom");
-    }
-
-    #[test]
-    fn test_mouse_scroll_sensitivity() {
-        use crossterm::event::{MouseEvent, MouseEventKind};
-
-        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::channel(10);
-        let (_ui_tx, ui_rx) = tokio::sync::mpsc::channel(10);
-        let mut app = App::new(cmd_tx, ui_rx);
-
-        // Simulate 5 scroll up events
-        for _ in 0..5 {
-            let mouse_event = MouseEvent {
-                kind: MouseEventKind::ScrollUp,
-                column: 0,
-                row: 0,
-                modifiers: KeyModifiers::empty(),
-            };
-            app.handle_mouse_input(mouse_event);
-        }
-
-        // Should scroll up by 15 lines total (5 events * 3 lines/event)
-        assert_eq!(app.scroll_offset, 15, "5 scroll events should move 15 lines");
     }
 }

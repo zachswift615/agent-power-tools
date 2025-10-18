@@ -18,6 +18,8 @@ pub struct AgentActor {
     cmd_rx: Receiver<Command>,
     session: Session,
     auto_save: bool,
+    cancel_requested: bool,
+    tool_call_count: usize, // Track tool calls in current turn
 }
 
 impl AgentActor {
@@ -84,6 +86,8 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
             cmd_rx,
             session,
             auto_save: true,
+            cancel_requested: false,
+            tool_call_count: 0,
         }
     }
 
@@ -115,6 +119,8 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
             cmd_rx,
             session,
             auto_save: true,
+            cancel_requested: false,
+            tool_call_count: 0,
         }
     }
 
@@ -143,7 +149,8 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                 }
                 Command::Cancel => {
                     tracing::info!("Cancellation requested");
-                    // TODO: Implement cancellation
+                    self.cancel_requested = true;
+                    self.ui_tx.send(UIUpdate::Error("Generation canceled by user".to_string())).await?;
                 }
                 Command::Shutdown => {
                     tracing::info!("Shutdown requested");
@@ -175,6 +182,10 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                     // Create new session
                     self.session = Session::new(self.config.model.clone());
                     self.conversation.clear();
+                    self.conversation.push(Self::create_system_prompt()); // Add system prompt to new session
+
+                    // Tell UI to clear displayed conversation
+                    self.ui_tx.send(UIUpdate::ConversationCleared).await?;
 
                     self.ui_tx
                         .send(UIUpdate::SessionLoaded {
@@ -227,7 +238,52 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
     }
 
     async fn generate_response(&mut self) -> Result<()> {
+        // Reset cancellation flag and tool call count at the start
+        self.cancel_requested = false;
+        self.tool_call_count = 0;
+        const MAX_TOOL_CALLS: usize = 50; // Prevent infinite loops
+
         loop {
+            // Check for pending cancel/newsession commands (non-blocking)
+            while let Ok(cmd) = self.cmd_rx.try_recv() {
+                match cmd {
+                    Command::Cancel => {
+                        tracing::info!("Cancel command received during generation");
+                        self.cancel_requested = true;
+                        self.ui_tx.send(UIUpdate::Error("Generation canceled by user".to_string())).await?;
+                    }
+                    Command::NewSession => {
+                        tracing::info!("NewSession command received during generation - canceling first");
+                        self.cancel_requested = true;
+                        // We'll handle the actual new session after cancellation completes
+                        // For now, just cancel and let the user try again
+                        self.ui_tx.send(UIUpdate::Error("Please wait for current generation to cancel before starting new session".to_string())).await?;
+                    }
+                    _ => {
+                        // Other commands received during generation are ignored
+                        tracing::warn!("Received command during generation, ignoring until complete");
+                    }
+                }
+            }
+
+            // Check for cancellation
+            if self.cancel_requested {
+                tracing::info!("Generation canceled, breaking loop");
+                break;
+            }
+
+            // Check tool call limit to prevent runaway loops
+            if self.tool_call_count >= MAX_TOOL_CALLS {
+                let error_msg = format!(
+                    "Tool call limit exceeded ({} calls). Stopping to prevent infinite loop. \
+                    This usually happens when the same tool fails repeatedly or gets stuck in a loop.",
+                    MAX_TOOL_CALLS
+                );
+                tracing::warn!("{}", error_msg);
+                self.ui_tx.send(UIUpdate::Error(error_msg)).await?;
+                break;
+            }
+
             // Use streaming or non-streaming based on config
             if self.config.streaming {
                 self.generate_response_streaming().await?;
@@ -277,6 +333,20 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
         let mut tool_calls: HashMap<String, (String, String)> = HashMap::new(); // id -> (name, accumulated_args)
 
         while let Some(event_result) = stream.next().await {
+            // Check for pending cancel commands (non-blocking)
+            while let Ok(cmd) = self.cmd_rx.try_recv() {
+                if matches!(cmd, Command::Cancel | Command::NewSession) {
+                    tracing::info!("Cancel/NewSession command received during streaming");
+                    self.cancel_requested = true;
+                }
+            }
+
+            // Check for cancellation in the streaming loop
+            if self.cancel_requested {
+                tracing::info!("Cancellation detected in stream, breaking");
+                break;
+            }
+
             match event_result {
                 Ok(event) => match event {
                     StreamEvent::TextDelta(delta) => {
@@ -336,7 +406,21 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
 
         // Execute tool calls
         for block in &content {
+            // Check for cancellation before each tool execution
+            while let Ok(cmd) = self.cmd_rx.try_recv() {
+                if matches!(cmd, Command::Cancel | Command::NewSession) {
+                    tracing::info!("Cancel/NewSession command received during tool execution");
+                    self.cancel_requested = true;
+                    return Ok(()); // Stop tool execution immediately
+                }
+            }
+
+            if self.cancel_requested {
+                return Ok(());
+            }
+
             if let ContentBlock::ToolUse { id, name, input } = block {
+                self.tool_call_count += 1; // Track tool calls to prevent infinite loops
                 let start = std::time::Instant::now();
                 let result = self.tool_registry.execute(name, input.clone()).await?;
                 let duration_ms = start.elapsed().as_millis() as u64;
@@ -396,11 +480,26 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
 
         // Process response content
         for block in &response.content {
+            // Check for cancellation before each block
+            while let Ok(cmd) = self.cmd_rx.try_recv() {
+                if matches!(cmd, Command::Cancel | Command::NewSession) {
+                    tracing::info!("Cancel/NewSession command received during non-streaming response");
+                    self.cancel_requested = true;
+                    return Ok(()); // Stop processing immediately
+                }
+            }
+
+            if self.cancel_requested {
+                return Ok(());
+            }
+
             match block {
                 ContentBlock::Text { text } => {
                     self.ui_tx.send(UIUpdate::AssistantText(text.clone())).await?;
                 }
                 ContentBlock::ToolUse { id, name, input } => {
+                    self.tool_call_count += 1; // Track tool calls to prevent infinite loops
+
                     self.ui_tx
                         .send(UIUpdate::ToolExecutionStarted {
                             name: name.clone(),
