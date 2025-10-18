@@ -59,6 +59,20 @@ impl App {
         }
     }
 
+    /// Convert character position to byte position in the input string
+    fn char_to_byte_pos(&self, char_pos: usize) -> usize {
+        self.input
+            .char_indices()
+            .nth(char_pos)
+            .map(|(byte_pos, _)| byte_pos)
+            .unwrap_or(self.input.len())
+    }
+
+    /// Get the length of input in characters (not bytes)
+    fn input_char_len(&self) -> usize {
+        self.input.chars().count()
+    }
+
     pub async fn run(&mut self) -> anyhow::Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -352,7 +366,8 @@ impl App {
             }
             (KeyCode::Right, _) => {
                 // Move cursor right
-                if self.cursor_position < self.input.len() {
+                let char_len = self.input_char_len();
+                if self.cursor_position < char_len {
                     self.cursor_position += 1;
                 }
             }
@@ -362,24 +377,28 @@ impl App {
             }
             (KeyCode::End, _) => {
                 // Jump to end of input
-                self.cursor_position = self.input.len();
+                self.cursor_position = self.input_char_len();
             }
             (KeyCode::Char(c), _) => {
                 // Insert at cursor position
-                self.input.insert(self.cursor_position, c);
+                let byte_pos = self.char_to_byte_pos(self.cursor_position);
+                self.input.insert(byte_pos, c);
                 self.cursor_position += 1;
             }
             (KeyCode::Backspace, _) => {
                 // Delete character before cursor
                 if self.cursor_position > 0 {
                     self.cursor_position -= 1;
-                    self.input.remove(self.cursor_position);
+                    let byte_pos = self.char_to_byte_pos(self.cursor_position);
+                    self.input.remove(byte_pos);
                 }
             }
             (KeyCode::Delete, _) => {
                 // Delete character after cursor
-                if self.cursor_position < self.input.len() {
-                    self.input.remove(self.cursor_position);
+                let char_len = self.input_char_len();
+                if self.cursor_position < char_len {
+                    let byte_pos = self.char_to_byte_pos(self.cursor_position);
+                    self.input.remove(byte_pos);
                 }
             }
             _ => {}
