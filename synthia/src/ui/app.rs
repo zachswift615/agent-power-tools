@@ -384,6 +384,8 @@ impl App {
                 let byte_pos = self.char_to_byte_pos(self.cursor_position);
                 self.input.insert(byte_pos, c);
                 self.cursor_position += 1;
+                // Safety: ensure cursor doesn't exceed input length
+                self.cursor_position = self.cursor_position.min(self.input_char_len());
             }
             (KeyCode::Backspace, _) => {
                 // Delete character before cursor
@@ -436,7 +438,7 @@ impl App {
         let input_lines = if self.input.is_empty() {
             1
         } else {
-            (self.input.len() as u16 / input_width.max(1)) + 1
+            (self.input_char_len() as u16 / input_width.max(1)) + 1
         };
         let input_height = (input_lines + 2).min(10); // +2 for borders, max 10 lines
 
