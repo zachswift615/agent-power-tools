@@ -443,6 +443,55 @@ impl App {
                 // Ctrl+E: Jump to end of input (Emacs/Unix style)
                 self.cursor_position = self.input_char_len();
             }
+            (KeyCode::Char('b'), KeyModifiers::ALT) => {
+                // Option/Alt + B: Jump to beginning of previous word (Emacs style)
+                if self.cursor_position > 0 {
+                    let chars: Vec<char> = self.input.chars().collect();
+                    let mut pos = self.cursor_position;
+
+                    // Skip any spaces to the left
+                    while pos > 0 && chars[pos - 1] == ' ' {
+                        pos -= 1;
+                    }
+
+                    // Skip the word to the left
+                    while pos > 0 && chars[pos - 1] != ' ' {
+                        pos -= 1;
+                    }
+
+                    self.cursor_position = pos;
+                }
+                tracing::debug!(
+                    "Left word jump (Alt+B): cursor_pos={}, char_len={}",
+                    self.cursor_position,
+                    self.input_char_len()
+                );
+            }
+            (KeyCode::Char('f'), KeyModifiers::ALT) => {
+                // Option/Alt + F: Jump to end of next word (Emacs style)
+                let char_len = self.input_char_len();
+                if self.cursor_position < char_len {
+                    let chars: Vec<char> = self.input.chars().collect();
+                    let mut pos = self.cursor_position;
+
+                    // Skip any spaces to the right
+                    while pos < chars.len() && chars[pos] == ' ' {
+                        pos += 1;
+                    }
+
+                    // Skip the word to the right
+                    while pos < chars.len() && chars[pos] != ' ' {
+                        pos += 1;
+                    }
+
+                    self.cursor_position = pos;
+                }
+                tracing::debug!(
+                    "Right word jump (Alt+F): cursor_pos={}, char_len={}",
+                    self.cursor_position,
+                    self.input_char_len()
+                );
+            }
             (KeyCode::Home, _) => {
                 // Jump to start of input
                 self.cursor_position = 0;
