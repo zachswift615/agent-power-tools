@@ -5,9 +5,11 @@ use crate::session::Session;
 use crate::tools::registry::ToolRegistry;
 use crate::types::{ContentBlock, Message, Role, StopReason};
 use anyhow::Result;
+use futures::future::join_all;
 use futures::StreamExt;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 pub struct AgentActor {
@@ -408,14 +410,22 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
         self.conversation.push(assistant_message.clone());
         self.session.add_message(assistant_message);
 
-        // Execute tool calls
+        // Collect all tool calls from this response
+        let mut tool_calls = Vec::new();
         for block in &content {
-            // Check for cancellation before each tool execution
+            if let ContentBlock::ToolUse { id, name, input } = block {
+                tool_calls.push((id.clone(), name.clone(), input.clone()));
+            }
+        }
+
+        // Execute all tools in parallel
+        if !tool_calls.is_empty() {
+            // Check for cancellation before starting tool execution
             while let Ok(cmd) = self.cmd_rx.try_recv() {
                 if matches!(cmd, Command::Cancel | Command::NewSession) {
-                    tracing::info!("Cancel/NewSession command received during tool execution");
+                    tracing::info!("Cancel/NewSession command received before tool execution");
                     self.cancel_requested = true;
-                    return Ok(()); // Stop tool execution immediately
+                    return Ok(());
                 }
             }
 
@@ -423,20 +433,50 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                 return Ok(());
             }
 
-            if let ContentBlock::ToolUse { id, name, input } = block {
-                self.tool_call_count += 1; // Track tool calls to prevent infinite loops
-                let start = std::time::Instant::now();
+            tracing::info!("Executing {} tools in parallel", tool_calls.len());
+            self.tool_call_count += tool_calls.len(); // Track tool calls to prevent infinite loops
 
-                // Execute tool and handle errors gracefully
-                match self.tool_registry.execute(name, input.clone()).await {
-                    Ok(result) => {
+            let futures: Vec<_> = tool_calls
+                .iter()
+                .map(|(id, name, input)| {
+                    let registry = self.tool_registry.clone();
+                    let name = name.clone();
+                    let input = input.clone();
+                    let id = id.clone();
+
+                    async move {
+                        let start = Instant::now();
+                        let result = registry.execute(&name, input.clone()).await;
                         let duration_ms = start.elapsed().as_millis() as u64;
+                        (id, name, input, result, duration_ms)
+                    }
+                })
+                .collect();
 
+            let results = join_all(futures).await;
+
+            // Process results in order
+            for (id, name, input, result, duration_ms) in results {
+                // Check for cancellation between result processing
+                while let Ok(cmd) = self.cmd_rx.try_recv() {
+                    if matches!(cmd, Command::Cancel | Command::NewSession) {
+                        tracing::info!("Cancel/NewSession command received during result processing");
+                        self.cancel_requested = true;
+                        return Ok(());
+                    }
+                }
+
+                if self.cancel_requested {
+                    return Ok(());
+                }
+
+                match result {
+                    Ok(tool_result) => {
                         // Truncate output to first 500 chars for UI display
-                        let output_preview = if result.content.len() > 500 {
-                            format!("{}...", &result.content[..500])
+                        let output_preview = if tool_result.content.len() > 500 {
+                            format!("{}...", &tool_result.content[..500])
                         } else {
-                            result.content.clone()
+                            tool_result.content.clone()
                         };
 
                         self.ui_tx
@@ -445,31 +485,30 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                                 id: id.clone(),
                                 input: input.clone(),
                                 output: output_preview,
-                                is_error: result.is_error,
+                                is_error: tool_result.is_error,
                                 duration_ms,
                             })
                             .await?;
 
                         // Add tool result to conversation
-                        let tool_result = Message {
+                        let result_message = Message {
                             role: Role::User,
                             content: vec![ContentBlock::ToolResult {
-                                tool_use_id: id.clone(),
-                                content: result.content,
-                                is_error: result.is_error,
+                                tool_use_id: id,
+                                content: tool_result.content,
+                                is_error: tool_result.is_error,
                             }],
                         };
-                        self.conversation.push(tool_result.clone());
-                        self.session.add_message(tool_result);
+                        self.conversation.push(result_message.clone());
+                        self.session.add_message(result_message);
                     }
                     Err(e) => {
-                        let duration_ms = start.elapsed().as_millis() as u64;
                         let error_msg = e.to_string();
 
                         // Check if this is a parameter error (malformed input)
-                        let is_param_error = error_msg.contains("Missing") ||
-                                           error_msg.contains("required") ||
-                                           error_msg.contains("parameter");
+                        let is_param_error = error_msg.contains("Missing")
+                            || error_msg.contains("required")
+                            || error_msg.contains("parameter");
 
                         let error_content = if is_param_error {
                             format!(
@@ -494,16 +533,16 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                             .await?;
 
                         // Add error result to conversation so LLM can retry
-                        let tool_result = Message {
+                        let result_message = Message {
                             role: Role::User,
                             content: vec![ContentBlock::ToolResult {
-                                tool_use_id: id.clone(),
+                                tool_use_id: id,
                                 content: error_content,
                                 is_error: true,
                             }],
                         };
-                        self.conversation.push(tool_result.clone());
-                        self.session.add_message(tool_result);
+                        self.conversation.push(result_message.clone());
+                        self.session.add_message(result_message);
                     }
                 }
             }
@@ -530,14 +569,36 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
         self.conversation.push(assistant_message.clone());
         self.session.add_message(assistant_message);
 
-        // Process response content
+        // Display text content immediately
         for block in &response.content {
-            // Check for cancellation before each block
+            if let ContentBlock::Text { text } = block {
+                self.ui_tx.send(UIUpdate::AssistantText(text.clone())).await?;
+            }
+        }
+
+        // Collect all tool calls from this response
+        let mut tool_calls = Vec::new();
+        for block in &response.content {
+            if let ContentBlock::ToolUse { id, name, input } = block {
+                // Send UI notification that tool execution is starting
+                self.ui_tx
+                    .send(UIUpdate::ToolExecutionStarted {
+                        name: name.clone(),
+                        id: id.clone(),
+                    })
+                    .await?;
+                tool_calls.push((id.clone(), name.clone(), input.clone()));
+            }
+        }
+
+        // Execute all tools in parallel
+        if !tool_calls.is_empty() {
+            // Check for cancellation before starting tool execution
             while let Ok(cmd) = self.cmd_rx.try_recv() {
                 if matches!(cmd, Command::Cancel | Command::NewSession) {
-                    tracing::info!("Cancel/NewSession command received during non-streaming response");
+                    tracing::info!("Cancel/NewSession command received before tool execution (non-streaming)");
                     self.cancel_requested = true;
-                    return Ok(()); // Stop processing immediately
+                    return Ok(());
                 }
             }
 
@@ -545,103 +606,118 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                 return Ok(());
             }
 
-            match block {
-                ContentBlock::Text { text } => {
-                    self.ui_tx.send(UIUpdate::AssistantText(text.clone())).await?;
-                }
-                ContentBlock::ToolUse { id, name, input } => {
-                    self.tool_call_count += 1; // Track tool calls to prevent infinite loops
+            tracing::info!("Executing {} tools in parallel (non-streaming)", tool_calls.len());
+            self.tool_call_count += tool_calls.len(); // Track tool calls to prevent infinite loops
 
-                    self.ui_tx
-                        .send(UIUpdate::ToolExecutionStarted {
-                            name: name.clone(),
-                            id: id.clone(),
-                        })
-                        .await?;
+            let futures: Vec<_> = tool_calls
+                .iter()
+                .map(|(id, name, input)| {
+                    let registry = self.tool_registry.clone();
+                    let name = name.clone();
+                    let input = input.clone();
+                    let id = id.clone();
 
-                    let start = std::time::Instant::now();
+                    async move {
+                        let start = Instant::now();
+                        let result = registry.execute(&name, input.clone()).await;
+                        let duration_ms = start.elapsed().as_millis() as u64;
+                        (id, name, input, result, duration_ms)
+                    }
+                })
+                .collect();
 
-                    // Execute tool and handle errors gracefully
-                    match self.tool_registry.execute(name, input.clone()).await {
-                        Ok(result) => {
-                            let duration_ms = start.elapsed().as_millis() as u64;
+            let results = join_all(futures).await;
 
-                            // Truncate output to first 500 chars for UI display
-                            let output_preview = if result.content.len() > 500 {
-                                format!("{}...", &result.content[..500])
-                            } else {
-                                result.content.clone()
-                            };
-
-                            self.ui_tx
-                                .send(UIUpdate::ToolResult {
-                                    name: name.clone(),
-                                    id: id.clone(),
-                                    input: input.clone(),
-                                    output: output_preview,
-                                    is_error: result.is_error,
-                                    duration_ms,
-                                })
-                                .await?;
-
-                            // Add tool result to conversation
-                            let tool_result = Message {
-                                role: Role::User,
-                                content: vec![ContentBlock::ToolResult {
-                                    tool_use_id: id.clone(),
-                                    content: result.content,
-                                    is_error: result.is_error,
-                                }],
-                            };
-                            self.conversation.push(tool_result.clone());
-                            self.session.add_message(tool_result);
-                        }
-                        Err(e) => {
-                            let duration_ms = start.elapsed().as_millis() as u64;
-                            let error_msg = e.to_string();
-
-                            // Check if this is a parameter error (malformed input)
-                            let is_param_error = error_msg.contains("Missing") ||
-                                               error_msg.contains("required") ||
-                                               error_msg.contains("parameter");
-
-                            let error_content = if is_param_error {
-                                format!(
-                                    "Error: {}. Please check the tool schema and retry with valid JSON parameters.",
-                                    error_msg
-                                )
-                            } else {
-                                format!("Error: {}", error_msg)
-                            };
-
-                            tracing::warn!("Tool execution failed for '{}': {}", name, error_msg);
-
-                            self.ui_tx
-                                .send(UIUpdate::ToolResult {
-                                    name: name.clone(),
-                                    id: id.clone(),
-                                    input: input.clone(),
-                                    output: error_content.clone(),
-                                    is_error: true,
-                                    duration_ms,
-                                })
-                                .await?;
-
-                            // Add error result to conversation so LLM can retry
-                            let tool_result = Message {
-                                role: Role::User,
-                                content: vec![ContentBlock::ToolResult {
-                                    tool_use_id: id.clone(),
-                                    content: error_content,
-                                    is_error: true,
-                                }],
-                            };
-                            self.conversation.push(tool_result.clone());
-                            self.session.add_message(tool_result);
-                        }
+            // Process results in order
+            for (id, name, input, result, duration_ms) in results {
+                // Check for cancellation between result processing
+                while let Ok(cmd) = self.cmd_rx.try_recv() {
+                    if matches!(cmd, Command::Cancel | Command::NewSession) {
+                        tracing::info!("Cancel/NewSession command received during result processing (non-streaming)");
+                        self.cancel_requested = true;
+                        return Ok(());
                     }
                 }
-                _ => {}
+
+                if self.cancel_requested {
+                    return Ok(());
+                }
+
+                match result {
+                    Ok(tool_result) => {
+                        // Truncate output to first 500 chars for UI display
+                        let output_preview = if tool_result.content.len() > 500 {
+                            format!("{}...", &tool_result.content[..500])
+                        } else {
+                            tool_result.content.clone()
+                        };
+
+                        self.ui_tx
+                            .send(UIUpdate::ToolResult {
+                                name: name.clone(),
+                                id: id.clone(),
+                                input: input.clone(),
+                                output: output_preview,
+                                is_error: tool_result.is_error,
+                                duration_ms,
+                            })
+                            .await?;
+
+                        // Add tool result to conversation
+                        let result_message = Message {
+                            role: Role::User,
+                            content: vec![ContentBlock::ToolResult {
+                                tool_use_id: id,
+                                content: tool_result.content,
+                                is_error: tool_result.is_error,
+                            }],
+                        };
+                        self.conversation.push(result_message.clone());
+                        self.session.add_message(result_message);
+                    }
+                    Err(e) => {
+                        let error_msg = e.to_string();
+
+                        // Check if this is a parameter error (malformed input)
+                        let is_param_error = error_msg.contains("Missing")
+                            || error_msg.contains("required")
+                            || error_msg.contains("parameter");
+
+                        let error_content = if is_param_error {
+                            format!(
+                                "Error: {}. Please check the tool schema and retry with valid JSON parameters.",
+                                error_msg
+                            )
+                        } else {
+                            format!("Error: {}", error_msg)
+                        };
+
+                        tracing::warn!("Tool execution failed for '{}': {}", name, error_msg);
+
+                        self.ui_tx
+                            .send(UIUpdate::ToolResult {
+                                name: name.clone(),
+                                id: id.clone(),
+                                input: input.clone(),
+                                output: error_content.clone(),
+                                is_error: true,
+                                duration_ms,
+                            })
+                            .await?;
+
+                        // Add error result to conversation so LLM can retry
+                        let result_message = Message {
+                            role: Role::User,
+                            content: vec![ContentBlock::ToolResult {
+                                tool_use_id: id,
+                                content: error_content,
+                                is_error: true,
+                            }],
+                        };
+                        self.conversation.push(result_message.clone());
+                        self.session.add_message(result_message);
+                    }
+                }
             }
         }
 
