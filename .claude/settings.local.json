@@ -134,7 +134,15 @@
       "Bash(git log:*)",
       "WebFetch(domain:platform.openai.com)",
       "Bash(echo:*)",
-      "Read(//Users/zachswift/.config/superpowers/skills/skills/collaboration/requesting-code-review/**)"
+      "Read(//Users/zachswift/.config/superpowers/skills/skills/collaboration/requesting-code-review/**)",
+      "Bash(find-skills executing plan)",
+      "Bash(/Users/zachswift/.config/superpowers/skills/skills/using-skills/find-skills executing)",
+      "Read(//Users/zachswift/.config/superpowers/skills/skills/collaboration/executing-plans/**)",
+      "Bash(/Users/zachswift/.config/superpowers/skills/skills/using-skills/find-skills \"plan\")",
+      "Bash(git rev-parse:*)",
+      "mcp__powertools__index_project",
+      "mcp__powertools__find_references",
+      "Bash(~/.cargo/bin/cargo check:*)"
     ],
     "deny": [],
     "ask": []

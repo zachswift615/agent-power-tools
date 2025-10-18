@@ -1,4 +1,5 @@
 use super::messages::{Command, UIUpdate};
+use crate::context_manager::ContextManager;
 use crate::llm::json_parser::JsonParser;
 use crate::llm::{GenerationConfig, LLMProvider, StreamEvent};
 use crate::session::Session;
@@ -16,6 +17,7 @@ pub struct AgentActor {
     llm_provider: Arc<dyn LLMProvider>,
     tool_registry: Arc<ToolRegistry>,
     conversation: Vec<Message>,
+    context_manager: ContextManager,
     config: GenerationConfig,
     ui_tx: Sender<UIUpdate>,
     cmd_rx: Receiver<Command>,
@@ -81,10 +83,15 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
         // Start with system prompt
         let conversation = vec![Self::create_system_prompt()];
 
+        // Initialize context manager with the system prompt
+        let mut context_manager = ContextManager::new(llm_provider.clone());
+        context_manager.add_message(Self::create_system_prompt());
+
         Self {
             llm_provider,
             tool_registry,
             conversation,
+            context_manager,
             config,
             ui_tx,
             cmd_rx,
@@ -115,10 +122,17 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
             conversation.insert(0, Self::create_system_prompt());
         }
 
+        // Initialize context manager with session messages
+        let mut context_manager = ContextManager::new(llm_provider.clone());
+        for message in &conversation {
+            context_manager.add_message(message.clone());
+        }
+
         Self {
             llm_provider,
             tool_registry,
             conversation,
+            context_manager,
             config,
             ui_tx,
             cmd_rx,
@@ -145,6 +159,7 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                         content: vec![ContentBlock::Text { text }],
                     };
                     self.conversation.push(message.clone());
+                    self.context_manager.add_message(message.clone());
                     self.session.add_message(message);
 
                     if let Err(e) = self.generate_response().await {
@@ -190,6 +205,10 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                     self.conversation.clear();
                     self.conversation.push(Self::create_system_prompt()); // Add system prompt to new session
 
+                    // Reset context manager with new system prompt
+                    self.context_manager = ContextManager::new(self.llm_provider.clone());
+                    self.context_manager.add_message(Self::create_system_prompt());
+
                     // Tell UI to clear displayed conversation
                     self.ui_tx.send(UIUpdate::ConversationCleared).await?;
 
@@ -209,6 +228,12 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
 
                             self.conversation = session.messages.clone();
                             self.session = session;
+
+                            // Reinitialize context manager with loaded messages
+                            self.context_manager = ContextManager::new(self.llm_provider.clone());
+                            for message in &self.conversation {
+                                self.context_manager.add_message(message.clone());
+                            }
 
                             self.ui_tx
                                 .send(UIUpdate::SessionLoaded {
@@ -326,10 +351,15 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
         // Send thinking indicator
         self.ui_tx.send(UIUpdate::AssistantThinking).await?;
 
+        // Compact context if needed before making LLM call
+        if let Err(e) = self.context_manager.compact_if_needed().await {
+            tracing::warn!("Failed to compact context: {}", e);
+        }
+
         let mut stream = self
             .llm_provider
             .stream_chat_completion(
-                self.conversation.clone(),
+                self.context_manager.get_messages().to_vec(),
                 self.tool_registry.definitions(),
                 &self.config,
             )
@@ -408,6 +438,7 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
             content: content.clone(),
         };
         self.conversation.push(assistant_message.clone());
+        self.context_manager.add_message(assistant_message.clone());
         self.session.add_message(assistant_message);
 
         // Collect all tool calls from this response
@@ -500,6 +531,7 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                             }],
                         };
                         self.conversation.push(result_message.clone());
+                        self.context_manager.add_message(result_message.clone());
                         self.session.add_message(result_message);
                     }
                     Err(e) => {
@@ -542,6 +574,7 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                             }],
                         };
                         self.conversation.push(result_message.clone());
+                        self.context_manager.add_message(result_message.clone());
                         self.session.add_message(result_message);
                     }
                 }
@@ -552,10 +585,15 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
     }
 
     async fn generate_response_non_streaming(&mut self) -> Result<()> {
+        // Compact context if needed before making LLM call
+        if let Err(e) = self.context_manager.compact_if_needed().await {
+            tracing::warn!("Failed to compact context: {}", e);
+        }
+
         let response = self
             .llm_provider
             .chat_completion(
-                self.conversation.clone(),
+                self.context_manager.get_messages().to_vec(),
                 self.tool_registry.definitions(),
                 &self.config,
             )
@@ -567,6 +605,7 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
             content: response.content.clone(),
         };
         self.conversation.push(assistant_message.clone());
+        self.context_manager.add_message(assistant_message.clone());
         self.session.add_message(assistant_message);
 
         // Display text content immediately
@@ -673,6 +712,7 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                             }],
                         };
                         self.conversation.push(result_message.clone());
+                        self.context_manager.add_message(result_message.clone());
                         self.session.add_message(result_message);
                     }
                     Err(e) => {
@@ -715,6 +755,7 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                             }],
                         };
                         self.conversation.push(result_message.clone());
+                        self.context_manager.add_message(result_message.clone());
                         self.session.add_message(result_message);
                     }
                 }

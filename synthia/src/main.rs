@@ -1,5 +1,6 @@
 mod agent;
 mod config;
+mod context_manager;
 mod llm;
 mod session;
 mod tools;
