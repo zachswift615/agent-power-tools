@@ -623,6 +623,12 @@ impl App {
             chars_processed += 1;
         }
 
+        // If cursor is exactly at the line edge, wrap to next line
+        if chars_on_current_line >= input_width {
+            current_line += 1;
+            chars_on_current_line = 0;
+        }
+
         let cursor_x = chunks[2].x + 1 + chars_on_current_line;
         let cursor_y = chunks[2].y + 1 + current_line;
 
