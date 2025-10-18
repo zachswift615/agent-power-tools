@@ -584,8 +584,57 @@ impl App {
 
         // Set cursor position in the input field
         // Calculate cursor position accounting for text wrapping
-        let cursor_x = chunks[2].x + 1 + (self.cursor_position as u16 % input_width.max(1));
-        let cursor_y = chunks[2].y + 1 + (self.cursor_position as u16 / input_width.max(1));
+        // We need to account for how text actually wraps, not just simple division
+
+        // Log the input text with position markers for debugging
+        tracing::debug!(
+            "input text: '{}'",
+            self.input
+        );
+        tracing::debug!(
+            "cursor at char position: {}/{}",
+            self.cursor_position,
+            self.input_char_len()
+        );
+
+        // Calculate which line the cursor is on and the column within that line
+        // by simulating how Ratatui wraps the text
+        let mut current_line = 0u16;
+        let mut chars_on_current_line = 0u16;
+        let mut chars_processed = 0usize;
+
+        for ch in self.input.chars() {
+            if chars_processed == self.cursor_position {
+                break;
+            }
+
+            // Check character display width (some unicode chars are wider)
+            let char_width = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(1) as u16;
+
+            // Check if adding this character would exceed the line width
+            if chars_on_current_line + char_width > input_width {
+                // Wrap to next line
+                current_line += 1;
+                chars_on_current_line = char_width;
+            } else {
+                chars_on_current_line += char_width;
+            }
+
+            chars_processed += 1;
+        }
+
+        let cursor_x = chunks[2].x + 1 + chars_on_current_line;
+        let cursor_y = chunks[2].y + 1 + current_line;
+
+        tracing::debug!(
+            "cursor render: line={}, col={}, x={}, y={}, input_width={}",
+            current_line,
+            chars_on_current_line,
+            cursor_x,
+            cursor_y,
+            input_width
+        );
+
         f.set_cursor_position((cursor_x, cursor_y));
 
         // Session list overlay (if showing)

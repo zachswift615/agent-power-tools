@@ -21,6 +21,7 @@ dirs = "5.0"
 chrono = "0.4"
 rand = "0.8"
 bytes = "1"
+unicode-width = "0.1"
 
 [dev-dependencies]
 tokio-test = "0.4"
