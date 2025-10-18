@@ -21,7 +21,16 @@ use ui::App;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    // Initialize tracing to a file so logs don't interfere with TUI
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/synthia.log")?;
+
+    tracing_subscriber::fmt()
+        .with_writer(std::sync::Arc::new(log_file))
+        .with_ansi(false)
+        .init();
 
     // Load configuration
     let config = Config::load()?;

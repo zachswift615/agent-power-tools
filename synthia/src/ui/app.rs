@@ -363,13 +363,28 @@ impl App {
                 if self.cursor_position > 0 {
                     self.cursor_position -= 1;
                 }
+                tracing::debug!(
+                    "Left arrow: cursor_pos={}, char_len={}",
+                    self.cursor_position,
+                    self.input_char_len()
+                );
             }
             (KeyCode::Right, _) => {
                 // Move cursor right
                 let char_len = self.input_char_len();
+                tracing::debug!(
+                    "Right arrow BEFORE: cursor_pos={}, char_len={}, can_move={}",
+                    self.cursor_position,
+                    char_len,
+                    self.cursor_position < char_len
+                );
                 if self.cursor_position < char_len {
                     self.cursor_position += 1;
                 }
+                tracing::debug!(
+                    "Right arrow AFTER: cursor_pos={}",
+                    self.cursor_position
+                );
             }
             (KeyCode::Home, _) => {
                 // Jump to start of input
@@ -386,6 +401,12 @@ impl App {
                 self.cursor_position += 1;
                 // Safety: ensure cursor doesn't exceed input length
                 self.cursor_position = self.cursor_position.min(self.input_char_len());
+                tracing::debug!(
+                    "Char inserted '{}': cursor_pos={}, char_len={}",
+                    c,
+                    self.cursor_position,
+                    self.input_char_len()
+                );
             }
             (KeyCode::Backspace, _) => {
                 // Delete character before cursor
@@ -393,6 +414,8 @@ impl App {
                     self.cursor_position -= 1;
                     let byte_pos = self.char_to_byte_pos(self.cursor_position);
                     self.input.remove(byte_pos);
+                    // Safety: ensure cursor doesn't exceed input length
+                    self.cursor_position = self.cursor_position.min(self.input_char_len());
                 }
             }
             (KeyCode::Delete, _) => {
@@ -401,6 +424,8 @@ impl App {
                 if self.cursor_position < char_len {
                     let byte_pos = self.char_to_byte_pos(self.cursor_position);
                     self.input.remove(byte_pos);
+                    // Safety: ensure cursor doesn't exceed input length
+                    self.cursor_position = self.cursor_position.min(self.input_char_len());
                 }
             }
             _ => {}
@@ -433,14 +458,22 @@ impl App {
 
     fn render(&self, f: &mut ratatui::Frame) {
         // Calculate dynamic height for input based on text length
-        // Account for block borders (2 lines) and calculate wrapped lines
-        let input_width = f.area().width.saturating_sub(4); // Subtract borders and padding
+        // Account for block borders (2 chars for left+right border = 2, no padding)
+        let input_width = f.area().width.saturating_sub(2); // Subtract borders only
         let input_lines = if self.input.is_empty() {
             1
         } else {
             (self.input_char_len() as u16 / input_width.max(1)) + 1
         };
         let input_height = (input_lines + 2).min(10); // +2 for borders, max 10 lines
+
+        tracing::debug!(
+            "render: terminal_width={}, input_width={}, cursor_pos={}, char_len={}",
+            f.area().width,
+            input_width,
+            self.cursor_position,
+            self.input_char_len()
+        );
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
