@@ -30,6 +30,7 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_writer(std::sync::Arc::new(log_file))
         .with_ansi(false)
+        .with_max_level(tracing::Level::DEBUG)
         .init();
 
     // Load configuration
