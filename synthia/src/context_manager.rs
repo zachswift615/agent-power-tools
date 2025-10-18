@@ -159,7 +159,7 @@ impl ContextManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::llm::{LLMResponse, StreamEvent, StreamResult};
+    use crate::llm::LLMResponse;
     use async_trait::async_trait;
     use serde_json::Value;
     use crate::types::{StopReason, TokenUsage};
@@ -192,7 +192,7 @@ mod tests {
             _messages: Vec<Message>,
             _tools: Vec<Value>,
             _config: &crate::llm::GenerationConfig,
-        ) -> Result<StreamResult> {
+        ) -> Result<crate::llm::provider::StreamResult> {
             unimplemented!("Not needed for tests")
         }
     }
