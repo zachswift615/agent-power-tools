@@ -7,7 +7,12 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType},
 };
 use std::io::{self, Write};
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{Receiver, Sender};
+
+// Event batching safety limits
+const MAX_BATCH_SIZE: usize = 1000;
+const BATCH_TIMEOUT_MS: u64 = 10;
 
 /// Wrap text at word boundaries for a given terminal width
 /// Handles Unicode properly and breaks long words (URLs, hashes) at width boundaries
@@ -134,12 +139,24 @@ impl App {
 
             // Process ALL pending key events before rendering
             // This prevents rendering after each character during paste operations
+            // Safety limits prevent infinite loops from paste bombs
             let mut had_input = false;
-            while event::poll(std::time::Duration::from_millis(0))? {
+            let mut events_processed = 0;
+            let batch_start = Instant::now();
+
+            while event::poll(Duration::from_millis(0))?
+                && events_processed < MAX_BATCH_SIZE
+                && batch_start.elapsed() < Duration::from_millis(BATCH_TIMEOUT_MS)
+            {
                 if let Event::Key(key) = event::read()? {
                     self.handle_input(&mut stdout, key).await?;
                     had_input = true;
+                    events_processed += 1;
                 }
+            }
+
+            if events_processed >= MAX_BATCH_SIZE {
+                tracing::warn!("Hit max batch size ({}), possible paste bomb detected", MAX_BATCH_SIZE);
             }
 
             // Render input line only after all input processed
@@ -711,4 +728,20 @@ mod tests {
             assert!(line.chars().count() <= 40);
         }
     }
+
+    #[test]
+    fn test_batch_size_constant() {
+        // Verify MAX_BATCH_SIZE is set to expected value
+        assert_eq!(MAX_BATCH_SIZE, 1000);
+    }
+
+    #[test]
+    fn test_batch_timeout_constant() {
+        // Verify BATCH_TIMEOUT_MS is set to expected value
+        assert_eq!(BATCH_TIMEOUT_MS, 10);
+    }
+
+    // Integration tests for event batching would require mocking crossterm events
+    // These tests verify the constants are set correctly
+    // End-to-end testing would be done manually or in integration tests
 }
