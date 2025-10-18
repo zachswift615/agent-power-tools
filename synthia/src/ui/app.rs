@@ -331,12 +331,12 @@ impl App {
                     self.auto_scroll_to_bottom();
                 }
             }
-            (KeyCode::Up, _) => {
+            (KeyCode::Up, KeyModifiers::CONTROL) => {
                 // Scroll up - disable auto-scroll when user manually scrolls
                 self.auto_scroll_enabled = false;
                 self.scroll_offset = self.scroll_offset.saturating_add(1);
             }
-            (KeyCode::Down, _) => {
+            (KeyCode::Down, KeyModifiers::CONTROL) => {
                 // Scroll down
                 self.scroll_offset = self.scroll_offset.saturating_sub(1);
                 // Re-enable auto-scroll if we've scrolled back to bottom (offset = 0)
@@ -344,14 +344,42 @@ impl App {
                     self.auto_scroll_enabled = true;
                 }
             }
-            (KeyCode::Char(c), _) => {
-                self.input.push(c);
+            (KeyCode::Left, _) => {
+                // Move cursor left
+                if self.cursor_position > 0 {
+                    self.cursor_position -= 1;
+                }
+            }
+            (KeyCode::Right, _) => {
+                // Move cursor right
+                if self.cursor_position < self.input.len() {
+                    self.cursor_position += 1;
+                }
+            }
+            (KeyCode::Home, _) => {
+                // Jump to start of input
+                self.cursor_position = 0;
+            }
+            (KeyCode::End, _) => {
+                // Jump to end of input
                 self.cursor_position = self.input.len();
             }
+            (KeyCode::Char(c), _) => {
+                // Insert at cursor position
+                self.input.insert(self.cursor_position, c);
+                self.cursor_position += 1;
+            }
             (KeyCode::Backspace, _) => {
-                if !self.input.is_empty() && self.cursor_position > 0 {
-                    self.input.pop();
-                    self.cursor_position = self.input.len();
+                // Delete character before cursor
+                if self.cursor_position > 0 {
+                    self.cursor_position -= 1;
+                    self.input.remove(self.cursor_position);
+                }
+            }
+            (KeyCode::Delete, _) => {
+                // Delete character after cursor
+                if self.cursor_position < self.input.len() {
+                    self.input.remove(self.cursor_position);
                 }
             }
             _ => {}
@@ -409,7 +437,7 @@ impl App {
             String::new()
         };
         let status_text = format!(
-            "Synthia v0.1.0 (↑/↓ scroll | ^S save | ^N new | ^L load){}",
+            "Synthia v0.1.0 (^↑/^↓ scroll | ^S save | ^N new | ^L load){}",
             session_info
         );
         let status = Paragraph::new(status_text)
