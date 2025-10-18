@@ -358,6 +358,30 @@ impl App {
                     self.auto_scroll_enabled = true;
                 }
             }
+            (KeyCode::Left, KeyModifiers::ALT) => {
+                // Option/Alt + Left: Jump to beginning of previous word
+                if self.cursor_position > 0 {
+                    let chars: Vec<char> = self.input.chars().collect();
+                    let mut pos = self.cursor_position;
+
+                    // Skip any spaces to the left
+                    while pos > 0 && chars[pos - 1] == ' ' {
+                        pos -= 1;
+                    }
+
+                    // Skip the word to the left
+                    while pos > 0 && chars[pos - 1] != ' ' {
+                        pos -= 1;
+                    }
+
+                    self.cursor_position = pos;
+                }
+                tracing::debug!(
+                    "Left word jump: cursor_pos={}, char_len={}",
+                    self.cursor_position,
+                    self.input_char_len()
+                );
+            }
             (KeyCode::Left, _) => {
                 // Move cursor left
                 if self.cursor_position > 0 {
@@ -365,6 +389,31 @@ impl App {
                 }
                 tracing::debug!(
                     "Left arrow: cursor_pos={}, char_len={}",
+                    self.cursor_position,
+                    self.input_char_len()
+                );
+            }
+            (KeyCode::Right, KeyModifiers::ALT) => {
+                // Option/Alt + Right: Jump to end of next word
+                let char_len = self.input_char_len();
+                if self.cursor_position < char_len {
+                    let chars: Vec<char> = self.input.chars().collect();
+                    let mut pos = self.cursor_position;
+
+                    // Skip any spaces to the right
+                    while pos < chars.len() && chars[pos] == ' ' {
+                        pos += 1;
+                    }
+
+                    // Skip the word to the right
+                    while pos < chars.len() && chars[pos] != ' ' {
+                        pos += 1;
+                    }
+
+                    self.cursor_position = pos;
+                }
+                tracing::debug!(
+                    "Right word jump: cursor_pos={}, char_len={}",
                     self.cursor_position,
                     self.input_char_len()
                 );
