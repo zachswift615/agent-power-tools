@@ -435,6 +435,14 @@ impl App {
                     self.cursor_position
                 );
             }
+            (KeyCode::Char('a'), KeyModifiers::CONTROL) => {
+                // Ctrl+A: Jump to start of input (Emacs/Unix style)
+                self.cursor_position = 0;
+            }
+            (KeyCode::Char('e'), KeyModifiers::CONTROL) => {
+                // Ctrl+E: Jump to end of input (Emacs/Unix style)
+                self.cursor_position = self.input_char_len();
+            }
             (KeyCode::Home, _) => {
                 // Jump to start of input
                 self.cursor_position = 0;
