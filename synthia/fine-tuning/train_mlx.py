@@ -86,11 +86,11 @@ def train_stage(
         "data": str(data_path.absolute()),  # Use absolute path
         "batch_size": batch_size,
         "iters": iterations,
-        "val_batches": 5,  # Reduced from 25 - much faster validation
+        "val_batches": 5,  # Reduced validation batches for speed
         "learning_rate": learning_rate,
-        "steps_per_report": 50,  # Report less frequently
-        "steps_per_eval": 200,  # Validate less frequently (every 200 iters instead of 50)
-        "save_every": 200,  # Save less frequently
+        "steps_per_report": 10,  # Report every 10 iterations
+        "steps_per_eval": 100,  # Validate every 100 iterations
+        "save_every": 100,  # Save checkpoints every 100 iterations
         "adapter_path": str(output_dir.absolute()),  # Use absolute path
         "max_seq_length": max_seq_length,
         "grad_checkpoint": True,
@@ -208,21 +208,21 @@ def main():
         "1": {
             "name": "tool-use-reinforcement",
             "model": base_model,
-            "iterations": 800,
+            "iterations": 200,
             "lr": 2e-5,
             "description": "Reinforce tool calling patterns with expanded dataset"
         },
         "2": {
             "name": "agentic-skills",
             "model": None,  # Will use stage 1 output
-            "iterations": 1000,
+            "iterations": 400,
             "lr": 1.5e-5,
             "description": "Add TDD, debugging, planning workflows"
         },
         "3": {
             "name": "full-integration",
             "model": None,  # Will use stage 2 output
-            "iterations": 1500,
+            "iterations": 600,
             "lr": 1e-5,
             "description": "Full dataset integration with all skills"
         }
