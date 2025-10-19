@@ -1,265 +1,75 @@
-# Synthia Fine-Tuning Dataset
+# Synthia Fine-Tuning Pipeline (MLX for Mac)
+
+This directory contains the fine-tuning pipeline for Synthia using Apple's MLX framework, optimized for Mac M1 Pro with 16GB RAM.
 
 ## Overview
 
-This directory contains a training dataset for fine-tuning Qwen 2.5 Coder 7B to use Synthia's tools proactively and effectively.
+**Base Model:** `zachswift615/qwen2.5-coder-synthia-tool-use` (already fine-tuned once)
+**Goal:** Continued fine-tuning with comprehensive agentic skills
+**Target Dataset Size:** 1,500-2,600 examples
+**Current Dataset Size:** 250 examples
 
-## Dataset Details
+## Hardware Requirements
 
-- **Format**: JSON Lines (.jsonl)
-- **Total Examples**: 250
-- **File Size**: ~108 KB
-- **Purpose**: Teach the model to use tools proactively without being prompted
+- **Mac with Apple Silicon** (M1, M1 Pro, M1 Max, M2, M3, etc.)
+- **Minimum 16GB RAM** (unified memory)
+- **~20GB free disk space** (for models and checkpoints)
 
-## Tool Distribution
+## Setup
 
-The dataset includes realistic examples across all Synthia tools:
+### 1. Create Python Virtual Environment
 
-- **bash**: 116 calls (43.3%) - System commands, build scripts, testing, monitoring
-- **read**: 68 calls (25.4%) - Reading config files, source code, logs, documentation
-- **glob**: 23 calls (8.6%) - Finding files by pattern (*.py, **/*.ts, etc.)
-- **write**: 19 calls (7.1%) - Creating new files (.gitignore, endpoints, models)
-- **edit**: 18 calls (6.7%) - Modifying existing files (config updates, code changes)
-- **grep**: 14 calls (5.2%) - Searching code patterns (TODOs, functions, imports)
-- **powertools**: 10 calls (3.7%) - Code navigation, refactoring, semantic search
-  - goto_definition, find_references, list_functions, rename_symbol
-  - search_ast, list_classes, project_stats, inline_variable
-  - batch_replace, index_project
-
-## Example Scenarios
-
-### Simple Single-Tool Use (50%)
-- Check server status
-- Read configuration
-- Find files by pattern
-- Run tests
-- Check git status
-
-### Multi-Step Workflows (30%)
-- Debug errors (read logs → check code → verify config)
-- Update configuration (read → edit → verify)
-- Setup features (write routes → add tests → update docs)
-
-### Complex Workflows (20%)
-- Full debugging sessions
-- Feature implementation (multiple files)
-- Refactoring operations
-- Project setup and configuration
-
-## Training Characteristics
-
-### Proactive Behavior
-- Model initiates tool use without "Would you like me to..."
-- Direct action: "I'll check the logs" → tool call
-- No unnecessary permission seeking
-
-### Natural Language
-- Varied user phrasings (not robotic)
-- Real-world programming tasks
-- Authentic file paths and code snippets
-
-### Error Handling
-- Realistic tool outputs (success and failure)
-- Multi-step problem solving
-- Context-aware follow-up actions
-
-## Quality Guidelines
-
-1. **Realistic**: Based on actual development workflows
-2. **Diverse**: Covers all major programming tasks
-3. **Proactive**: Model acts independently
-4. **Natural**: Human-like conversation flow
-5. **Educational**: Clear cause-and-effect patterns
-
-## File Structure
-
-```
-fine-tuning/
-├── dataset.jsonl          # Main training dataset (250 examples)
-├── generate_dataset.py    # Generation script (archived)
-├── train.py              # Main training script (Unsloth + QLoRA)
-├── merge_and_export.py   # Merge LoRA adapters and export model
-├── test_model.py         # Quick inference test script
-├── setup.ps1             # Windows PowerShell setup script
-├── requirements.txt      # Python dependencies
-└── README.md             # This file
-```
-
-## Quick Start (Windows + RTX 4060)
-
-### Prerequisites
-- Windows 10/11
-- Python 3.10 or 3.11
-- NVIDIA RTX 4060 (8GB VRAM)
-- ~20GB free disk space
-
-### Step 1: Setup Environment
-
-Choose your preferred shell:
-
-**PowerShell:**
-```powershell
-# Run the automated setup script
-.\setup.ps1
-```
-
-**Git Bash:**
 ```bash
-# Run the automated setup script
-bash setup.sh
-# or
-./setup.sh
+cd fine-tuning
+python3 -m venv venv
+source venv/bin/activate  # On Mac/Linux
 ```
 
-Both scripts will:
-- Check Python and CUDA installation
-- Create virtual environment
-- Install PyTorch with CUDA 12.1
-- Install Unsloth and all dependencies
-- Verify installation
+### 2. Install Dependencies
 
-### Step 2: Train the Model
-
-**PowerShell:**
-```powershell
-# Activate virtual environment
-.\venv\Scripts\Activate.ps1
-
-# Start training (~1-2 hours on RTX 4060)
-python train.py
-```
-
-**Git Bash:**
 ```bash
-# Activate virtual environment
-source venv/Scripts/activate
-
-# Start training (~1-2 hours on RTX 4060)
-python train.py
+pip install -r requirements.txt
 ```
 
-Training settings (optimized for 8GB VRAM):
-- Model: Qwen2.5-Coder-7B (4-bit quantized)
-- LoRA rank: 16
-- Batch size: 1 with 8x gradient accumulation
-- Max sequence length: 2048 tokens
-- Expected VRAM: ~6-7GB peak
-- Checkpoints saved every 50 steps
+### 3. Download Base Model (if needed)
 
-### Step 3: Merge and Export
+The model is already in LM Studio at:
+```
+/Users/zachswift/.lmstudio/models/zachswift615/qwen2.5-coder-synthia-tool-use/model-q4_k_m.gguf
+```
 
-**Both PowerShell and Git Bash:**
+For MLX, download the original HuggingFace version:
 ```bash
-# Merge LoRA adapters into base model
-python merge_and_export.py
+huggingface-cli download zachswift615/qwen2.5-coder-synthia-tool-use
 ```
 
-This will create:
-- 16-bit merged model (for further training)
-- GGUF format (for LM Studio, llama.cpp)
-- q4_k_m and q5_k_m quantizations
+Or use directly from HuggingFace (downloads automatically on first use).
 
-### Step 4: Test the Model
+## Dataset Structure
 
-**Both PowerShell and Git Bash:**
-```bash
-# Quick inference test
-python test_model.py
-```
-
-Tests with sample prompts to verify tool use behavior.
-
-## Training Configuration
-
-### Memory Optimizations for 8GB VRAM
-
-The training script uses multiple techniques to fit on RTX 4060:
-
-1. **4-bit Quantization**: Reduces model memory by ~75%
-2. **QLoRA**: Only trains small adapter layers (0.5% of parameters)
-3. **Gradient Checkpointing**: Trades compute for memory
-4. **8-bit Optimizer**: Reduces optimizer state memory by ~50%
-5. **Small Batch Size**: 1 per device with gradient accumulation
-
-### Adjustable Parameters in train.py
-
-```python
-# Model settings
-MAX_SEQ_LENGTH = 2048          # Reduce if OOM (1024, 1536)
-LORA_RANK = 16                 # Lower for less VRAM (8, 12)
-
-# Training settings
-PER_DEVICE_BATCH_SIZE = 1      # Keep at 1 for 8GB
-GRADIENT_ACCUMULATION_STEPS = 8 # Adjust for effective batch size
-NUM_TRAIN_EPOCHS = 1           # Increase for more training
-MAX_STEPS = -1                 # Set to limit steps (e.g., 200)
-
-# Learning rate
-LEARNING_RATE = 2e-4           # 2e-4 is good default for LoRA
-```
-
-### Troubleshooting
-
-**Out of Memory (OOM) Errors:**
-- Reduce `MAX_SEQ_LENGTH` to 1024 or 1536
-- Keep `PER_DEVICE_BATCH_SIZE = 1`
-- Reduce `LORA_RANK` to 8 or 12
-- Close other applications using GPU
-
-**Slow Training:**
-- Training should take ~1-2 hours for 250 examples
-- If much slower, check GPU is being used: `nvidia-smi`
-- Ensure CUDA is available in PyTorch
-
-**Import Errors:**
-- Reinstall dependencies: `pip install -r requirements.txt --force-reinstall`
-- Check PyTorch CUDA: `python -c "import torch; print(torch.cuda.is_available())"`
-
-## Usage
-
-This dataset can be used to fine-tune Qwen 2.5 Coder 7B (or similar models) to:
-- Use tools proactively without prompting
-- Choose appropriate tools for tasks
-- Chain tools together for complex workflows
-- Maintain natural conversation while using tools
-
-## Output Formats
-
-### 16-bit Merged Model
-- Location: `./outputs/qwen2.5-coder-synthia-merged/16bit/`
-- Size: ~14GB
-- Use for: Further fine-tuning, full-precision inference
-
-### GGUF Models
-- Location: `./outputs/qwen2.5-coder-synthia-merged/gguf/`
-- Formats: q4_k_m (~4GB), q5_k_m (~5GB)
-- Use for: LM Studio, llama.cpp, Ollama
-
-Import into LM Studio:
-1. Open LM Studio
-2. Click "Import Model"
-3. Select: `outputs/.../gguf/model-q4_k_m.gguf`
-4. Start chatting with your fine-tuned Synthia!
-
-## Example Entry
+The training dataset is in `dataset.jsonl`. Each line is a complete conversation in OpenAI chat format:
 
 ```json
 {
   "messages": [
     {
+      "role": "system",
+      "content": "You are Synthia, a helpful coding assistant..."
+    },
+    {
       "role": "user",
-      "content": "Check if the server is running on port 3000"
+      "content": "Read the file src/main.rs"
     },
     {
       "role": "assistant",
-      "content": "I'll check what's running on port 3000.",
+      "content": "I'll read that file for you.",
       "tool_calls": [
         {
           "id": "call_1",
           "type": "function",
           "function": {
-            "name": "bash",
-            "arguments": "{\"command\": \"lsof -i :3000\", \"description\": \"Check port 3000\"}"
+            "name": "read",
+            "arguments": "{\"file_path\": \"src/main.rs\"}"
           }
         }
       ]
@@ -267,24 +77,207 @@ Import into LM Studio:
     {
       "role": "tool",
       "tool_call_id": "call_1",
-      "name": "bash",
-      "content": "node    12345 user   20u  IPv4 *:3000 (LISTEN)"
+      "content": "fn main() { ... }"
     },
     {
       "role": "assistant",
-      "content": "Yes, there's a Node.js server running on port 3000 (PID 12345)."
+      "content": "This is a Rust main function that..."
     }
   ]
 }
 ```
 
+## Training Stages
+
+The pipeline runs in 3 stages:
+
+### Stage 1: Tool Use Reinforcement
+- **Dataset:** ~750 examples (current 250 + new 500)
+- **Iterations:** 800
+- **Learning Rate:** 2e-5
+- **Focus:** Reinforce tool calling accuracy, parallel execution, error recovery
+- **Time:** ~30-40 minutes
+
+### Stage 2: Agentic Skills
+- **Dataset:** ~1,050 examples (Stage 1 + 300 agentic)
+- **Iterations:** 1,000
+- **Learning Rate:** 1.5e-5
+- **Focus:** TDD workflows, systematic debugging, planning
+- **Time:** ~40-50 minutes
+
+### Stage 3: Full Integration
+- **Dataset:** ~1,500-2,600 examples (all categories)
+- **Iterations:** 1,500
+- **Learning Rate:** 1e-5
+- **Focus:** Integration of all skills (craftsmanship, collaboration, problem-solving)
+- **Time:** ~60-90 minutes
+
+**Total Training Time:** ~2-3 hours
+
+## Running Training
+
+### Run All Stages
+
+```bash
+python train_mlx.py --stage all
+```
+
+### Run Individual Stage
+
+```bash
+python train_mlx.py --stage 1
+python train_mlx.py --stage 2
+python train_mlx.py --stage 3
+```
+
+### Run with Testing
+
+```bash
+python train_mlx.py --stage all --test
+```
+
+### Custom Options
+
+```bash
+python train_mlx.py \
+  --stage 1 \
+  --base-model zachswift615/qwen2.5-coder-synthia-tool-use \
+  --dataset dataset.jsonl \
+  --output-dir models \
+  --test
+```
+
+## Output
+
+Trained models are saved to `fine-tuning/models/`:
+
+```
+fine-tuning/models/
+├── stage1/
+│   ├── adapters.npz       # LoRA weights
+│   └── config.json        # Training config
+├── synthia-stage1/        # Fused model
+├── stage2/
+│   ├── adapters.npz
+│   └── config.json
+├── synthia-stage2/        # Fused model
+├── stage3/
+│   ├── adapters.npz
+│   └── config.json
+└── synthia-stage3/        # Final model
+```
+
+## Using the Fine-Tuned Model
+
+### Test with MLX
+
+```bash
+mlx_lm.generate \
+  --model fine-tuning/models/synthia-stage3 \
+  --prompt "Read the file src/main.rs and tell me what it does" \
+  --max-tokens 500
+```
+
+### Convert to GGUF for LM Studio
+
+```bash
+# 1. Convert to GGUF (requires llama.cpp)
+python llama.cpp/convert.py \
+  fine-tuning/models/synthia-stage3 \
+  --outfile synthia-stage3-f16.gguf
+
+# 2. Quantize (optional, for smaller file size)
+llama.cpp/quantize \
+  synthia-stage3-f16.gguf \
+  synthia-stage3-q4_k_m.gguf \
+  q4_k_m
+
+# 3. Move to LM Studio models directory
+cp synthia-stage3-q4_k_m.gguf \
+  ~/.lmstudio/models/zachswift615/qwen2.5-coder-synthia-v2/
+```
+
+### Upload to HuggingFace
+
+```bash
+huggingface-cli login
+
+huggingface-cli upload \
+  zachswift615/qwen2.5-coder-synthia-v2 \
+  fine-tuning/models/synthia-stage3
+```
+
+## Memory Optimization
+
+If you encounter OOM (Out Of Memory) errors:
+
+1. **Reduce batch size:** Change `batch_size: 2` to `batch_size: 1`
+2. **Reduce sequence length:** Change `max_seq_length: 2048` to `max_seq_length: 1024`
+3. **Close other apps:** Free up memory during training
+4. **Monitor memory:** Use Activity Monitor to watch RAM usage
+
+## Validation
+
+After each stage, validate the model:
+
+```python
+# Test tool calling
+prompt = "Read src/main.rs and find all async functions"
+
+# Test TDD workflow
+prompt = "Add a divide function to the calculator library using TDD"
+
+# Test debugging
+prompt = "Debug why the server is returning 500 errors"
+
+# Test refactoring
+prompt = "Refactor this code to follow DRY principle"
+```
+
+## Troubleshooting
+
+### "mlx_lm.lora: command not found"
+
+Make sure MLX is installed and you're in the venv:
+```bash
+source venv/bin/activate
+pip install mlx-lm
+```
+
+### "Out of memory"
+
+Reduce batch_size to 1 or max_seq_length to 1024.
+
+### "Invalid JSON in dataset"
+
+Run validation:
+```bash
+python -c "
+import json
+with open('dataset.jsonl') as f:
+    for i, line in enumerate(f):
+        json.loads(line)  # Will error on invalid JSON
+print('✓ All valid')
+"
+```
+
+### Training is slow
+
+This is normal for 7B models on 16GB RAM. Expected times:
+- 800 iterations: ~30-40 minutes
+- 1500 iterations: ~60-90 minutes
+
 ## Next Steps
 
-1. **Fine-tune** the model using this dataset
-2. **Evaluate** on held-out test cases
-3. **Iterate** based on performance metrics
-4. **Deploy** the fine-tuned model as Synthia v2
+1. **Generate more training data** - Use the specialized agents in `.claude/agents/`
+2. **Run Stage 1** - Start with tool use reinforcement
+3. **Validate outputs** - Test model after each stage
+4. **Iterate** - Add more examples for weak areas
+5. **Upload to HuggingFace** - Share the improved model
 
-## License
+## Resources
 
-This dataset is part of the Synthia project and follows the same license terms.
+- [MLX Documentation](https://ml-explore.github.io/mlx/build/html/index.html)
+- [MLX Examples](https://github.com/ml-explore/mlx-examples)
+- [LoRA Paper](https://arxiv.org/abs/2106.09685)
+- [Qwen2.5-Coder](https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct)

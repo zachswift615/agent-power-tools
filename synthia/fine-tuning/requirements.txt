@@ -1,121 +1,22 @@
-# ==============================================================================
-# Python Dependencies for Synthia Fine-Tuning
-# Optimized for RTX 4060 (8GB VRAM) on Windows
-#
-# Compatible with:
-# - Python 3.10, 3.11
-# - PyTorch 2.5+ with CUDA 12.1
-# - Windows 10/11
-#
-# Install with: pip install -r requirements.txt
-# ==============================================================================
+# MLX Fine-Tuning Requirements for Mac M1 Pro
 
-# Core ML Framework
-# PyTorch is installed separately via CUDA-specific command:
-# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-# This ensures CUDA 12.1 support for RTX 4060
+# Core MLX framework (Apple Silicon optimized)
+mlx>=0.18.0
+mlx-lm>=0.18.0
 
-# Hugging Face Ecosystem
-transformers>=4.40.0          # Model loading and tokenization
-datasets>=2.18.0              # Dataset loading and processing
-accelerate>=0.27.0            # Distributed training and memory optimization
-peft>=0.10.0                  # Parameter-Efficient Fine-Tuning (LoRA)
-trl>=0.8.0                    # Transformer Reinforcement Learning (SFTTrainer)
+# Model utilities
+transformers>=4.44.0
+huggingface-hub>=0.24.0
+sentencepiece>=0.2.0
 
-# Unsloth - Fast and memory-efficient fine-tuning
-# Provides 2x faster training with 70% less memory usage
-unsloth>=2024.3  # Unsloth for CUDA 12.1 - let pip resolve compatible versions
-
-# Quantization and Optimization
-bitsandbytes>=0.42.0          # 4-bit/8-bit quantization, 8-bit optimizers
-scipy>=1.11.0                 # Required by bitsandbytes
-
-# Tokenization
-sentencepiece>=0.2.0          # SentencePiece tokenizer (used by Qwen)
-protobuf>=4.25.0              # Protocol buffers (required by sentencepiece)
-
-# GGUF Export (for LM Studio)
-# Unsloth includes GGUF export capabilities built-in
-# No additional dependencies needed
-
-# Progress Bars and Logging
-tqdm>=4.66.0                  # Progress bars for training
-rich>=13.7.0                  # Pretty console output
+# Data processing
+datasets>=2.20.0
+accelerate>=0.33.0
 
 # Utilities
-psutil>=5.9.0                 # System and process monitoring
-py-cpuinfo>=9.0.0             # CPU info detection
+numpy>=1.26.0
+tqdm>=4.66.0
 
-# Development Tools (Optional)
-ipython>=8.12.0               # Interactive Python shell
-ipdb>=0.13.13                 # IPython debugger
-
-# ==============================================================================
-# Installation Notes
-# ==============================================================================
-#
-# 1. Install PyTorch first with CUDA support:
-#    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-#
-# 2. Then install all other dependencies:
-#    pip install -r requirements.txt
-#
-# 3. Verify installation:
-#    python -c "import torch; print(torch.cuda.is_available())"
-#    python -c "from unsloth import FastLanguageModel; print('OK')"
-#
-# ==============================================================================
-# Package Size Estimates
-# ==============================================================================
-#
-# - PyTorch with CUDA: ~2.0 GB
-# - Transformers ecosystem: ~500 MB
-# - Unsloth: ~200 MB
-# - Other dependencies: ~300 MB
-# Total download: ~3 GB
-#
-# ==============================================================================
-# Troubleshooting
-# ==============================================================================
-#
-# Issue: "CUDA out of memory"
-# Solution: Reduce batch size in train.py (try PER_DEVICE_BATCH_SIZE = 1)
-#
-# Issue: "No module named 'unsloth'"
-# Solution: Ensure you installed with the correct extras:
-#           pip install "unsloth[cu121-torch250]" --upgrade
-#
-# Issue: "bitsandbytes not compiled with CUDA support"
-# Solution: Reinstall bitsandbytes:
-#           pip uninstall bitsandbytes -y
-#           pip install bitsandbytes>=0.42.0 --force-reinstall
-#
-# Issue: "torch.cuda.is_available() returns False"
-# Solution: 1. Update NVIDIA drivers
-#           2. Reinstall PyTorch with CUDA:
-#              pip uninstall torch torchvision torchaudio -y
-#              pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-#
-# ==============================================================================
-# Version Compatibility Matrix
-# ==============================================================================
-#
-# Python 3.10:
-#   - PyTorch: 2.0 - 2.5+
-#   - CUDA: 11.8, 12.1, 12.4
-#   - Unsloth: All versions
-#   - Recommendation: Best compatibility, use this
-#
-# Python 3.11:
-#   - PyTorch: 2.0 - 2.5+
-#   - CUDA: 11.8, 12.1, 12.4
-#   - Unsloth: All versions
-#   - Recommendation: Good compatibility
-#
-# Python 3.12:
-#   - PyTorch: 2.5+ only
-#   - CUDA: 12.1, 12.4
-#   - Unsloth: May have issues
-#   - Recommendation: Wait for better support
-#
-# ==============================================================================
+# Development
+jupyter>=1.0.0
+ipython>=8.26.0

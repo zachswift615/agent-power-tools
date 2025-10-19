@@ -1,0 +1,22 @@
+# Training outputs (models are too large for git)
+fine-tuning/models/
+*.safetensors
+*.npz
+
+# SCIP index files (binary artifacts, regenerate with powertools)
+*.scip
+*.scip.meta
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.Python
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
