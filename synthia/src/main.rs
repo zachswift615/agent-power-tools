@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
     tool_registry.register(Arc::new(GlobTool::new()))?;
     tool_registry.register(Arc::new(WebFetchTool::new()))?;
     tool_registry.register(Arc::new(GitTool::new(config.timeouts.git_timeout)))?;
-    tool_registry.register(Arc::new(PowertoolsTool::new()))?;
+    tool_registry.register(Arc::new(PowertoolsTool::new(config.tools.powertools_binary_path.clone())?))?;
     tool_registry.register(Arc::new(WorkshopTool::new(config.timeouts.workshop_timeout)))?;
     let tool_registry = Arc::new(tool_registry);
 

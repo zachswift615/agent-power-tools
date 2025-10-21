@@ -14,6 +14,9 @@ pub struct Config {
 
     #[serde(default)]
     pub ui: UIConfig,
+
+    #[serde(default)]
+    pub tools: ToolsConfig,
 }
 
 /// LLM provider configuration
@@ -74,6 +77,15 @@ pub struct UIConfig {
     /// Maximum lines to show in tool output
     #[serde(default = "default_max_output_lines")]
     pub max_output_lines: usize,
+}
+
+/// Tools configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolsConfig {
+    /// Optional path to a custom powertools binary.
+    /// If not specified, uses the embedded binary.
+    #[serde(default)]
+    pub powertools_binary_path: Option<PathBuf>,
 }
 
 // Default value functions
@@ -154,12 +166,21 @@ impl Default for UIConfig {
     }
 }
 
+impl Default for ToolsConfig {
+    fn default() -> Self {
+        Self {
+            powertools_binary_path: None,
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
             llm: LLMConfig::default(),
             timeouts: TimeoutConfig::default(),
             ui: UIConfig::default(),
+            tools: ToolsConfig::default(),
         }
     }
 }

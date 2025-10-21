@@ -2,10 +2,15 @@ use super::{Tool, ToolResult};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use serde_json::Value;
+use std::fs;
+use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::timeout;
+
+// Embed the powertools binary at compile time
+static POWERTOOLS_BINARY: &[u8] = include_bytes!("../../../powertools-cli/target/release/powertools");
 
 /// Powertools integration tool that provides semantic code navigation capabilities
 /// by shelling out to the powertools binary. Operations include:
@@ -21,20 +26,54 @@ pub struct PowertoolsTool {
 }
 
 impl PowertoolsTool {
-    pub fn new() -> Self {
-        // Default to the powertools-cli binary location relative to synthia
-        let binary_path = PathBuf::from("../powertools-cli/target/release/powertools");
-        Self {
+    /// Create a new PowertoolsTool with optional custom binary path.
+    /// If no path is provided, extracts and uses the embedded binary.
+    pub fn new(binary_path: Option<PathBuf>) -> Result<Self> {
+        let binary_path = match binary_path {
+            Some(path) => path,
+            None => Self::get_embedded_binary_path()?,
+        };
+
+        Ok(Self {
             binary_path,
             timeout_seconds: 120,
-        }
+        })
     }
 
-    pub fn with_binary_path(binary_path: PathBuf) -> Self {
-        Self {
-            binary_path,
-            timeout_seconds: 120,
+    /// Extract the embedded powertools binary to cache and return its path.
+    /// The binary is extracted to ~/.cache/synthia/powertools
+    fn get_embedded_binary_path() -> Result<PathBuf> {
+        let cache_dir = dirs::cache_dir()
+            .ok_or_else(|| anyhow!("Could not determine cache directory"))?
+            .join("synthia");
+
+        fs::create_dir_all(&cache_dir)?;
+
+        let binary_path = cache_dir.join("powertools");
+
+        // Check if binary already exists and is up to date
+        let needs_extraction = if binary_path.exists() {
+            // Compare file size as a simple check
+            let existing_size = fs::metadata(&binary_path)?.len();
+            existing_size != POWERTOOLS_BINARY.len() as u64
+        } else {
+            true
+        };
+
+        if needs_extraction {
+            tracing::info!("Extracting embedded powertools binary to {}", binary_path.display());
+            fs::write(&binary_path, POWERTOOLS_BINARY)?;
+
+            // Make it executable (Unix only)
+            #[cfg(unix)]
+            {
+                let mut perms = fs::metadata(&binary_path)?.permissions();
+                perms.set_mode(0o755);
+                fs::set_permissions(&binary_path, perms)?;
+            }
         }
+
+        Ok(binary_path)
     }
 
     async fn run_powertools_command(
@@ -313,7 +352,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_powertools_stats() {
-        let tool = PowertoolsTool::with_binary_path(get_test_binary_path());
+        let tool = PowertoolsTool::new(Some(get_test_binary_path())).unwrap();
 
         let result = tool
             .execute(serde_json::json!({
@@ -330,7 +369,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_powertools_functions() {
-        let tool = PowertoolsTool::with_binary_path(get_test_binary_path());
+        let tool = PowertoolsTool::new(Some(get_test_binary_path())).unwrap();
 
         let result = tool
             .execute(serde_json::json!({
@@ -348,7 +387,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_powertools_classes() {
-        let tool = PowertoolsTool::with_binary_path(get_test_binary_path());
+        let tool = PowertoolsTool::new(Some(get_test_binary_path())).unwrap();
 
         let result = tool
             .execute(serde_json::json!({
@@ -365,7 +404,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_powertools_invalid_operation() {
-        let tool = PowertoolsTool::with_binary_path(get_test_binary_path());
+        let tool = PowertoolsTool::new(Some(get_test_binary_path())).unwrap();
 
         let result = tool
             .execute(serde_json::json!({
@@ -382,7 +421,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_powertools_missing_location_for_definition() {
-        let tool = PowertoolsTool::with_binary_path(get_test_binary_path());
+        let tool = PowertoolsTool::new(Some(get_test_binary_path())).unwrap();
 
         let result = tool
             .execute(serde_json::json!({
@@ -399,7 +438,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_powertools_missing_symbol_for_references() {
-        let tool = PowertoolsTool::with_binary_path(get_test_binary_path());
+        let tool = PowertoolsTool::new(Some(get_test_binary_path())).unwrap();
 
         let result = tool
             .execute(serde_json::json!({
@@ -416,7 +455,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_powertools_stats_with_path() {
-        let tool = PowertoolsTool::with_binary_path(get_test_binary_path());
+        let tool = PowertoolsTool::new(Some(get_test_binary_path())).unwrap();
 
         let result = tool
             .execute(serde_json::json!({
@@ -433,7 +472,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_powertools_binary_not_found() {
-        let tool = PowertoolsTool::with_binary_path(PathBuf::from("/nonexistent/path/powertools"));
+        let tool = PowertoolsTool::new(Some(PathBuf::from("/nonexistent/path/powertools"))).unwrap();
 
         let result = tool
             .execute(serde_json::json!({
@@ -448,7 +487,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_powertools_index_with_auto_install() {
-        let tool = PowertoolsTool::with_binary_path(get_test_binary_path());
+        let tool = PowertoolsTool::new(Some(get_test_binary_path())).unwrap();
 
         let result = tool
             .execute(serde_json::json!({
@@ -465,7 +504,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_powertools_index_with_languages() {
-        let tool = PowertoolsTool::with_binary_path(get_test_binary_path());
+        let tool = PowertoolsTool::new(Some(get_test_binary_path())).unwrap();
 
         let result = tool
             .execute(serde_json::json!({

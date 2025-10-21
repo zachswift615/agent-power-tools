@@ -61,3 +61,10 @@ syntax_highlighting = true
 # Maximum lines to show in tool output
 # Longer outputs will be truncated to prevent UI clutter
 max_output_lines = 1000
+
+# Tools Configuration
+[tools]
+# Optional path to a custom powertools binary
+# If not specified, Synthia uses the embedded binary (extracted to ~/.cache/synthia/powertools)
+# Uncomment and set this only if you want to use a custom powertools build:
+# powertools_binary_path = "/path/to/custom/powertools"
