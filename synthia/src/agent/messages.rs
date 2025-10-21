@@ -10,6 +10,12 @@ pub enum Command {
 }
 
 #[derive(Debug, Clone)]
+pub enum ApprovalResponse {
+    Approve,
+    Reject,
+}
+
+#[derive(Debug, Clone)]
 pub enum UIUpdate {
     AssistantText(String),
     AssistantTextDelta(String), // For streaming text chunks
