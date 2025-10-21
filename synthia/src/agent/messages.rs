@@ -15,7 +15,7 @@ pub enum ApprovalResponse {
     Reject,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum UIUpdate {
     AssistantText(String),
     AssistantTextDelta(String), // For streaming text chunks
@@ -40,5 +40,6 @@ pub enum UIUpdate {
         old_string: String,
         new_string: String,
         diff: String,
+        response_tx: tokio::sync::oneshot::Sender<ApprovalResponse>,
     },
 }

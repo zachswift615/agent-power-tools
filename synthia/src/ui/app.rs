@@ -79,12 +79,13 @@ fn wrap_text(text: &str, width: usize) -> String {
     wrapped
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct EditApprovalState {
     file_path: String,
     old_string: String,
     new_string: String,
     diff: String,
+    response_tx: tokio::sync::oneshot::Sender<crate::agent::messages::ApprovalResponse>,
 }
 
 pub struct App {
@@ -414,15 +415,17 @@ impl App {
                 old_string,
                 new_string,
                 diff,
+                response_tx,
             } => {
                 self.clear_input_line(stdout)?;
 
-                // Store approval state
+                // Store approval state with channel
                 self.pending_edit_approval = Some(EditApprovalState {
                     file_path: file_path.clone(),
                     old_string,
                     new_string,
                     diff: diff.clone(),
+                    response_tx,
                 });
 
                 // Show diff preview
@@ -591,25 +594,25 @@ impl App {
 
     async fn handle_input(&mut self, stdout: &mut impl Write, key: event::KeyEvent) -> anyhow::Result<()> {
         // Handle edit approval input
-        if self.pending_edit_approval.is_some() {
+        if let Some(approval_state) = self.pending_edit_approval.take() {
             match (key.code, key.modifiers) {
                 (KeyCode::Char('a'), _) | (KeyCode::Char('A'), _) => {
-                    // Send approval
-                    // TODO: Send approval response through channel
-                    self.pending_edit_approval = None;
+                    let _ = approval_state.response_tx.send(crate::agent::messages::ApprovalResponse::Approve);
                     execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
                     self.print_header(stdout)?;
                     return Ok(());
                 }
                 (KeyCode::Char('r'), _) | (KeyCode::Char('R'), _) => {
-                    // Send rejection
-                    // TODO: Send rejection response through channel
-                    self.pending_edit_approval = None;
+                    let _ = approval_state.response_tx.send(crate::agent::messages::ApprovalResponse::Reject);
                     execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
                     self.print_header(stdout)?;
                     return Ok(());
                 }
-                _ => return Ok(()),
+                _ => {
+                    // Put it back if user didn't approve/reject
+                    self.pending_edit_approval = Some(approval_state);
+                    return Ok(());
+                }
             }
         }
 
