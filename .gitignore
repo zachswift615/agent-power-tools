@@ -34,4 +34,4 @@ Cargo.lock
 .workshop
 
 synthia/.claude
-
+*.scip*
