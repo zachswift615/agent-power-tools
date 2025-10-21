@@ -4,10 +4,13 @@ use anyhow::{anyhow, Result};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
+use crate::agent::messages::UIUpdate;
 
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn Tool>>,
     cache: ToolCache,
+    ui_tx: Option<Sender<UIUpdate>>,
 }
 
 impl ToolRegistry {
@@ -15,7 +18,12 @@ impl ToolRegistry {
         Self {
             tools: HashMap::new(),
             cache: ToolCache::new(100), // Cache last 100 results
+            ui_tx: None,
         }
+    }
+
+    pub fn set_ui_sender(&mut self, ui_tx: Sender<UIUpdate>) {
+        self.ui_tx = Some(ui_tx);
     }
 
     pub fn register(&mut self, tool: Arc<dyn Tool>) -> Result<()> {
@@ -35,6 +43,11 @@ impl ToolRegistry {
     }
 
     pub async fn execute(&self, name: &str, params: Value) -> Result<ToolResult> {
+        // Intercept edit tool for approval
+        if name == "edit" && self.ui_tx.is_some() {
+            return self.execute_edit_with_approval(params).await;
+        }
+
         // Check cache first for deterministic tools
         if Self::is_deterministic(name) {
             if let Some(cached) = self.cache.get(name, &params) {
@@ -55,6 +68,73 @@ impl ToolRegistry {
         }
 
         Ok(result)
+    }
+
+    async fn execute_edit_with_approval(&self, params: Value) -> Result<ToolResult> {
+        use crate::tools::diff::compute_diff;
+
+        let file_path = params["file_path"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing file_path"))?;
+        let old_string = params["old_string"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing old_string"))?;
+        let new_string = params["new_string"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing new_string"))?;
+
+        // Read current file content
+        let content = tokio::fs::read_to_string(file_path).await?;
+
+        if !content.contains(old_string) {
+            return Ok(ToolResult {
+                content: format!("String '{}' not found in file", old_string),
+                is_error: true,
+            });
+        }
+
+        // Compute diff
+        let new_content = content.replace(old_string, new_string);
+        let diff = compute_diff(&content, &new_content);
+
+        // Create approval channel
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+
+        // Send preview to UI
+        if let Some(ui_tx) = &self.ui_tx {
+            ui_tx
+                .send(UIUpdate::EditPreview {
+                    file_path: file_path.to_string(),
+                    old_string: old_string.to_string(),
+                    new_string: new_string.to_string(),
+                    diff,
+                    response_tx,
+                })
+                .await?;
+        }
+
+        // Wait for user response
+        match response_rx.await {
+            Ok(crate::agent::messages::ApprovalResponse::Approve) => {
+                // Execute the edit
+                let tool = self.get("edit").ok_or_else(|| anyhow!("Edit tool not found"))?;
+                tool.execute(params).await
+            }
+            Ok(crate::agent::messages::ApprovalResponse::Reject) => {
+                // User rejected
+                Ok(ToolResult {
+                    content: "Edit cancelled by user".to_string(),
+                    is_error: false,
+                })
+            }
+            Err(_) => {
+                // Channel closed (user disconnected?)
+                Ok(ToolResult {
+                    content: "Edit approval cancelled".to_string(),
+                    is_error: true,
+                })
+            }
+        }
     }
 
     pub fn definitions(&self) -> Vec<Value> {
