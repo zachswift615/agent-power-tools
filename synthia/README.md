@@ -13,6 +13,7 @@ Synthia is a powerful terminal-based AI assistant that brings Claude Code's capa
 - **⚡ Fast & Lightweight** - Native Rust performance
 - **🎨 Clean TUI** - Mouse and keyboard scrolling, intuitive controls
 - **🔌 OpenAI-Compatible** - Works with LM Studio, Ollama, OpenAI, and more
+- **✅ Edit Approval with Diff Preview** - Review all file edits before they execute, with syntax-highlighted diffs
 
 ## Quick Start
 
