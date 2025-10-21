@@ -79,6 +79,14 @@ fn wrap_text(text: &str, width: usize) -> String {
     wrapped
 }
 
+#[derive(Debug, Clone)]
+struct EditApprovalState {
+    file_path: String,
+    old_string: String,
+    new_string: String,
+    diff: String,
+}
+
 pub struct App {
     input: String,
     cursor_position: usize,
@@ -93,6 +101,7 @@ pub struct App {
     session_list_selected: usize,
     input_needs_render: bool, // Track if input line needs re-rendering
     is_rendering_input: bool, // Guard flag to prevent concurrent input renders
+    pending_edit_approval: Option<EditApprovalState>,
 }
 
 impl App {
@@ -111,6 +120,7 @@ impl App {
             session_list_selected: 0,
             input_needs_render: true, // Render on first loop
             is_rendering_input: false, // Not rendering initially
+            pending_edit_approval: None,
         }
     }
 
@@ -399,8 +409,24 @@ impl App {
                 self.print_header(stdout)?;
                 stdout.flush()?;
             }
-            UIUpdate::EditPreview { file_path: _, old_string: _, new_string: _, diff: _ } => {
-                // TODO: Implement edit preview UI in Task 5
+            UIUpdate::EditPreview {
+                file_path,
+                old_string,
+                new_string,
+                diff,
+            } => {
+                self.clear_input_line(stdout)?;
+
+                // Store approval state
+                self.pending_edit_approval = Some(EditApprovalState {
+                    file_path: file_path.clone(),
+                    old_string,
+                    new_string,
+                    diff: diff.clone(),
+                });
+
+                // Show diff preview
+                self.render_edit_approval_prompt(stdout, &file_path, &diff)?;
             }
         }
 
@@ -512,7 +538,81 @@ impl App {
         stdout.flush()
     }
 
+    fn render_edit_approval_prompt(&self, stdout: &mut impl Write, file_path: &str, diff: &str) -> io::Result<()> {
+        queue!(
+            stdout,
+            SetForegroundColor(Color::Yellow),
+            Print("┌─ Edit Preview ────────────────────────────────────────┐\n"),
+            ResetColor
+        )?;
+
+        writeln!(stdout, "│ File: {}", file_path)?;
+        writeln!(stdout, "│")?;
+
+        // Show diff (truncate if too long)
+        let max_lines = 15;
+        let diff_lines: Vec<&str> = diff.lines().take(max_lines).collect();
+
+        for line in diff_lines {
+            let color = if line.starts_with('+') {
+                Color::Green
+            } else if line.starts_with('-') {
+                Color::Red
+            } else {
+                Color::White
+            };
+
+            queue!(stdout, Print("│ "), SetForegroundColor(color))?;
+            writeln!(stdout, "{}", line)?;
+            queue!(stdout, ResetColor)?;
+        }
+
+        if diff.lines().count() > max_lines {
+            writeln!(stdout, "│ ...")?;
+        }
+
+        writeln!(stdout, "│")?;
+        queue!(
+            stdout,
+            SetForegroundColor(Color::Cyan),
+            Print("│ [A]ccept  [R]eject\n"),
+            ResetColor
+        )?;
+
+        queue!(
+            stdout,
+            SetForegroundColor(Color::Yellow),
+            Print("└───────────────────────────────────────────────────────┘\n"),
+            ResetColor
+        )?;
+
+        stdout.flush()
+    }
+
     async fn handle_input(&mut self, stdout: &mut impl Write, key: event::KeyEvent) -> anyhow::Result<()> {
+        // Handle edit approval input
+        if self.pending_edit_approval.is_some() {
+            match (key.code, key.modifiers) {
+                (KeyCode::Char('a'), _) | (KeyCode::Char('A'), _) => {
+                    // Send approval
+                    // TODO: Send approval response through channel
+                    self.pending_edit_approval = None;
+                    execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                    self.print_header(stdout)?;
+                    return Ok(());
+                }
+                (KeyCode::Char('r'), _) | (KeyCode::Char('R'), _) => {
+                    // Send rejection
+                    // TODO: Send rejection response through channel
+                    self.pending_edit_approval = None;
+                    execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                    self.print_header(stdout)?;
+                    return Ok(());
+                }
+                _ => return Ok(()),
+            }
+        }
+
         // Handle session list navigation
         if self.show_session_list {
             match key.code {
