@@ -25,6 +25,7 @@ unicode-width = "0.1"
 regex = "1"
 lru = "0.12"
 which = "6"
+similar = { version = "2.3", features = ["inline"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
