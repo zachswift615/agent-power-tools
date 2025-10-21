@@ -71,6 +71,8 @@ impl ToolRegistry {
     }
 
     async fn execute_edit_with_approval(&self, params: Value) -> Result<ToolResult> {
+        // TODO: Check config.ui.edit_approval before prompting
+        // For MVP, always prompt
         use crate::tools::diff::compute_diff;
 
         let file_path = params["file_path"]

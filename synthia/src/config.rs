@@ -77,6 +77,10 @@ pub struct UIConfig {
     /// Maximum lines to show in tool output
     #[serde(default = "default_max_output_lines")]
     pub max_output_lines: usize,
+
+    /// Enable edit approval prompts
+    #[serde(default = "default_edit_approval")]
+    pub edit_approval: bool,
 }
 
 /// Tools configuration
@@ -129,6 +133,10 @@ fn default_max_output_lines() -> usize {
     1000
 }
 
+fn default_edit_approval() -> bool {
+    true
+}
+
 fn default_streaming() -> bool {
     true
 }
@@ -162,6 +170,7 @@ impl Default for UIConfig {
         Self {
             syntax_highlighting: default_syntax_highlighting(),
             max_output_lines: default_max_output_lines(),
+            edit_approval: default_edit_approval(),
         }
     }
 }
@@ -344,6 +353,23 @@ mod tests {
 
         // Should have default values
         assert_eq!(config.llm.model, "qwen2.5-coder-7b-instruct");
+    }
+
+    #[test]
+    fn test_edit_approval_default() {
+        let config = UIConfig::default();
+        assert_eq!(config.edit_approval, true); // Enabled by default
+    }
+
+    #[test]
+    fn test_edit_approval_from_toml() {
+        let toml_str = r#"
+            [ui]
+            edit_approval = false
+        "#;
+
+        let config: Config = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.ui.edit_approval, false);
     }
 }
 
