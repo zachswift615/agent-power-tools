@@ -41,8 +41,8 @@ LORA_DROPOUT = 0.05  # Dropout for regularization (0.0-0.1 typical)
 DATASET_PATHS = [
     "data/train.jsonl",  # Original training data (2,472 examples)
     "data/flask_templates.jsonl",  # Flask template examples
-    "data/failure_recovery.jsonl"  # Failure recovery examples
-    # "data/train_improved.jsonl"  # Additional improved training examples (uncomment when ready)
+    "data/failure_recovery.jsonl",  # Failure recovery examples
+    "data/train_improved.jsonl"  # Additional improved training examples
 ]
 OUTPUT_DIR = "./outputs/qwen2.5-coder-synthia-tool-use"  # Where to save checkpoints
 # RESUME_FROM_CHECKPOINT = "./outputs/qwen2.5-coder-synthia-tool-use"  # Uncomment to continue from existing checkpoint
