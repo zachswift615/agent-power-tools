@@ -56,11 +56,14 @@ async fn main() -> Result<()> {
     tool_registry.register(Arc::new(GitTool::new(config.timeouts.git_timeout)))?;
     tool_registry.register(Arc::new(PowertoolsTool::new(config.tools.powertools_binary_path.clone())?))?;
     tool_registry.register(Arc::new(WorkshopTool::new(config.timeouts.workshop_timeout)))?;
-    let tool_registry = Arc::new(tool_registry);
 
     // Create channels
     let (cmd_tx, cmd_rx) = mpsc::channel::<Command>(100);
     let (ui_tx, ui_rx) = mpsc::channel::<UIUpdate>(100);
+
+    // Wire up UI sender to tool registry for edit approval
+    tool_registry.set_ui_sender(ui_tx.clone());
+    let tool_registry = Arc::new(tool_registry);
 
     // Create generation config from loaded settings
     let gen_config = GenerationConfig {
