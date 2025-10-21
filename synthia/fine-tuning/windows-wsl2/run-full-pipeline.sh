@@ -92,12 +92,32 @@ pip install -q --upgrade pip
 print_info "Installing PyTorch nightly with CUDA 12.1..."
 pip install -q --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
 
+# Pin triton to compatible version (fixes AttrsDescriptor import error)
+print_info "Installing compatible triton version..."
+pip install -q "triton>=3.0.0,<3.2.0"
+
 # Then install other dependencies (from PyPI)
 print_info "Installing Unsloth and other dependencies..."
 pip install -q "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
 pip install -q transformers datasets accelerate peft trl bitsandbytes scipy sentencepiece protobuf tqdm rich psutil py-cpuinfo
 
 print_success "Training environment ready"
+
+# Apply Unsloth patch for PyTorch nightly compatibility (if needed)
+print_info "Checking if Unsloth patch is needed..."
+VISION_PY="$TRAINING_VENV/lib/python3.11/site-packages/unsloth/models/vision.py"
+if [ -f "$VISION_PY" ]; then
+    # Check if the problematic parameter exists
+    if grep -q "skip_guard_eval_unsafe = False" "$VISION_PY"; then
+        print_info "Applying Unsloth compatibility patch..."
+        sed -i 's/torch_compiler_set_stance(stance = "default", skip_guard_eval_unsafe = False)/torch_compiler_set_stance(stance = "default")/g' "$VISION_PY"
+        print_success "Unsloth patched for PyTorch nightly compatibility"
+    else
+        print_success "Unsloth patch not needed (already compatible)"
+    fi
+else
+    print_info "vision.py not found - skipping patch"
+fi
 
 # Verify PyTorch CUDA
 CUDA_CHECK=$(python -c "import torch; print(torch.cuda.is_available())" 2>/dev/null || echo "False")
