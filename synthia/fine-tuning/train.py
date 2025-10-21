@@ -137,6 +137,16 @@ def create_model_and_tokenizer(model_name, max_seq_length, load_in_4bit, lora_ra
             load_in_4bit=load_in_4bit,
         )
 
+        # CRITICAL FIX: Ensure chat template is set (same fix as above)
+        if not tokenizer.chat_template or not tokenizer.chat_template.strip():
+            print("⚠️  Tokenizer missing chat template - loading from official Qwen2.5-Coder...")
+            from transformers import AutoTokenizer
+            official_tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-Coder-7B-Instruct")
+            tokenizer.chat_template = official_tokenizer.chat_template
+            print("✓ Chat template loaded from official Qwen2.5-Coder")
+        else:
+            print(f"✓ Chat template already configured")
+
         print(f"✓ Model loaded from checkpoint with existing LoRA adapters")
         print_gpu_memory()
 
@@ -157,15 +167,18 @@ def create_model_and_tokenizer(model_name, max_seq_length, load_in_4bit, lora_ra
         print(f"✓ Base model loaded")
         print_gpu_memory()
 
-        # Set chat template for Qwen models if not already set
-        if tokenizer.chat_template is None:
-            # Use the standard Qwen2.5 chat template
-            from unsloth.chat_templates import get_chat_template
-            tokenizer = get_chat_template(
-                tokenizer,
-                chat_template="qwen-2.5",
-            )
-            print(f"✓ Chat template set for Qwen model")
+        # CRITICAL FIX: Set chat template from official Qwen2.5-Coder
+        # The Unsloth 4-bit version doesn't have the chat template configured
+        # Without this, apply_chat_template() fails and produces corrupted training data
+        # Note: We check for empty/None/whitespace to catch all cases
+        if not tokenizer.chat_template or not tokenizer.chat_template.strip():
+            print("⚠️  Tokenizer missing chat template - loading from official Qwen2.5-Coder...")
+            from transformers import AutoTokenizer
+            official_tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-Coder-7B-Instruct")
+            tokenizer.chat_template = official_tokenizer.chat_template
+            print("✓ Chat template loaded from official Qwen2.5-Coder")
+        else:
+            print(f"✓ Chat template already configured")
 
         # Add LoRA adapters
         # We target attention and MLP layers for maximum impact
@@ -185,6 +198,18 @@ def create_model_and_tokenizer(model_name, max_seq_length, load_in_4bit, lora_ra
 
     print(f"✓ LoRA adapters added")
     print_gpu_memory()
+
+    # Verify chat template is working
+    print("\n🔍 Verifying chat template...")
+    try:
+        test_messages = [{"role": "user", "content": "test"}]
+        test_output = tokenizer.apply_chat_template(test_messages, tokenize=False, add_generation_prompt=False)
+        print(f"✓ Chat template verified and working correctly")
+    except Exception as e:
+        print(f"❌ CRITICAL ERROR: Chat template not working!")
+        print(f"   Error: {e}")
+        print(f"   Training will produce corrupted data - STOPPING!")
+        raise
 
     return model, tokenizer
 
