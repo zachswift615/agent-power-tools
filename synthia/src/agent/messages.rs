@@ -29,4 +29,10 @@ pub enum UIUpdate {
     SessionLoaded { session_id: String },
     SessionList { sessions: Vec<crate::session::SessionInfo> },
     ConversationCleared, // Signal UI to clear displayed conversation
+    EditPreview {
+        file_path: String,
+        old_string: String,
+        new_string: String,
+        diff: String,
+    },
 }

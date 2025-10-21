@@ -92,6 +92,7 @@ pub struct App {
     show_session_list: bool,
     session_list_selected: usize,
     input_needs_render: bool, // Track if input line needs re-rendering
+    is_rendering_input: bool, // Guard flag to prevent concurrent input renders
 }
 
 impl App {
@@ -109,6 +110,7 @@ impl App {
             show_session_list: false,
             session_list_selected: 0,
             input_needs_render: true, // Render on first loop
+            is_rendering_input: false, // Not rendering initially
         }
     }
 
@@ -298,11 +300,19 @@ impl App {
 
                 // Show output preview
                 let output_lines: Vec<&str> = output.lines().take(5).collect();
-                let output_preview = output_lines.join("\n");
                 let has_more = output.lines().count() > 5 || output.len() > 200;
 
-                if !output_preview.is_empty() {
-                    writeln!(stdout, "  Output: {}", output_preview.trim())?;
+                if !output_lines.is_empty() {
+                    // Print first line with "Output:" label
+                    writeln!(stdout, "\nOutput:")?;
+
+                    // Print each line with consistent indentation
+                    // IMPORTANT: Replace tabs with spaces to avoid terminal tab-stop issues
+                    for line in output_lines {
+                        let line_no_tabs = line.replace('\t', "    "); // 4 spaces per tab
+                        writeln!(stdout, "  {}", line_no_tabs.trim())?;
+                    }
+
                     if has_more {
                         writeln!(stdout, "  ...")?;
                     }
@@ -389,6 +399,9 @@ impl App {
                 self.print_header(stdout)?;
                 stdout.flush()?;
             }
+            UIUpdate::EditPreview { file_path: _, old_string: _, new_string: _, diff: _ } => {
+                // TODO: Implement edit preview UI in Task 5
+            }
         }
 
         Ok(())
@@ -404,9 +417,42 @@ impl App {
         Ok(())
     }
 
-    fn render_input_line(&self, stdout: &mut impl Write) -> io::Result<()> {
-        // Clear current line
-        self.clear_input_line(stdout)?;
+    fn render_input_line(&mut self, stdout: &mut impl Write) -> io::Result<()> {
+        // Guard against concurrent renders (prevents duplication)
+        if self.is_rendering_input {
+            return Ok(());
+        }
+
+        self.is_rendering_input = true;
+
+        // IMPORTANT: When input is long and wraps, we need to clear ALL lines it occupies
+        // Calculate how many lines the current input takes
+        let (term_width, _) = size()?;
+        let prompt_len = 5; // "You: "
+        let total_len = prompt_len + self.input.chars().count();
+        let lines_needed = (total_len + term_width as usize - 1) / term_width as usize;
+
+        // Get current cursor position
+        let (_, mut cursor_y) = cursor::position()?;
+
+        // Clear all lines that the input currently occupies
+        // Move cursor up to the start of the input
+        if lines_needed > 1 {
+            // If we're on a wrapped line, we need to move up to clear from the start
+            let lines_to_move_up = lines_needed.saturating_sub(1);
+            if lines_to_move_up > 0 && cursor_y >= lines_to_move_up as u16 {
+                cursor_y -= lines_to_move_up as u16;
+                queue!(stdout, cursor::MoveTo(0, cursor_y))?;
+            }
+        }
+
+        // Clear from current position to end of screen (clears all wrapped lines)
+        queue!(
+            stdout,
+            cursor::MoveTo(0, cursor_y),
+            Clear(ClearType::FromCursorDown)
+        )?;
+        stdout.flush()?;
 
         // Print prompt and input
         queue!(
@@ -414,15 +460,23 @@ impl App {
             SetForegroundColor(Color::Green),
             Print("You: "),
             ResetColor,
-            Print(&self.input)
+            Print(&self.input),
         )?;
 
-        // Move cursor to correct position
-        let prompt_len = 5; // "You: ".len()
-        let cursor_x = prompt_len + self.cursor_position;
-        queue!(stdout, Print("\r"), cursor::MoveRight(cursor_x as u16))?;
+        // Calculate and move to correct cursor position
+        let cursor_x = (prompt_len + self.cursor_position) % term_width as usize;
+        let cursor_line_offset = (prompt_len + self.cursor_position) / term_width as usize;
+        let final_cursor_y = cursor_y + cursor_line_offset as u16;
 
-        stdout.flush()
+        queue!(stdout, cursor::MoveTo(cursor_x as u16, final_cursor_y))?;
+
+        // Flush all queued operations at once
+        let result = stdout.flush();
+
+        // Release the guard
+        self.is_rendering_input = false;
+
+        result
     }
 
     fn render_session_list(&self, stdout: &mut impl Write) -> io::Result<()> {
