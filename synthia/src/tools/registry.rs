@@ -48,6 +48,11 @@ impl ToolRegistry {
             return self.execute_edit_with_approval(params).await;
         }
 
+        // Intercept write tool for approval
+        if name == "write" && self.ui_tx.is_some() {
+            return self.execute_write_with_approval(params).await;
+        }
+
         // Check cache first for deterministic tools
         if Self::is_deterministic(name) {
             if let Some(cached) = self.cache.get(name, &params) {
@@ -133,6 +138,74 @@ impl ToolRegistry {
                 // Channel closed (user disconnected?)
                 Ok(ToolResult {
                     content: "Edit approval cancelled".to_string(),
+                    is_error: true,
+                })
+            }
+        }
+    }
+
+    async fn execute_write_with_approval(&self, params: Value) -> Result<ToolResult> {
+        use crate::tools::diff::compute_diff;
+
+        let file_path = params["file_path"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing file_path"))?;
+        let new_content = params["content"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing content"))?;
+
+        // Check if file exists
+        let (old_content, action_label) = match tokio::fs::read_to_string(file_path).await {
+            Ok(content) => (content, "OVERWRITE"),
+            Err(_) => (String::new(), "CREATE"),
+        };
+
+        // Compute diff
+        let diff = if old_content.is_empty() {
+            // New file - show as all additions
+            new_content.lines()
+                .map(|line| format!("+{}", line))
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            // Existing file - show diff
+            compute_diff(&old_content, new_content)
+        };
+
+        // Create approval channel
+        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+
+        // Send preview to UI (reuse EditPreview for now)
+        if let Some(ui_tx) = &self.ui_tx {
+            ui_tx
+                .send(UIUpdate::EditPreview {
+                    file_path: format!("{} [{}]", file_path, action_label),
+                    old_string: if old_content.is_empty() { "[NEW FILE]".to_string() } else { "[EXISTING FILE]".to_string() },
+                    new_string: format!("{} lines", new_content.lines().count()),
+                    diff,
+                    response_tx,
+                })
+                .await?;
+        }
+
+        // Wait for user response
+        match response_rx.await {
+            Ok(crate::agent::messages::ApprovalResponse::Approve) => {
+                // Execute the write
+                let tool = self.get("write").ok_or_else(|| anyhow!("Write tool not found"))?;
+                tool.execute(params).await
+            }
+            Ok(crate::agent::messages::ApprovalResponse::Reject) => {
+                // User rejected
+                Ok(ToolResult {
+                    content: "Write cancelled by user".to_string(),
+                    is_error: false,
+                })
+            }
+            Err(_) => {
+                // Channel closed (user disconnected?)
+                Ok(ToolResult {
+                    content: "Write approval cancelled".to_string(),
                     is_error: true,
                 })
             }

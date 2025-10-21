@@ -29,3 +29,9 @@ Cargo.lock
 # Environment files
 .env
 .env.local
+
+.claude
+.workshop
+
+synthia/.claude
+

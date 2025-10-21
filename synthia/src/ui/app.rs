@@ -79,6 +79,43 @@ fn wrap_text(text: &str, width: usize) -> String {
     wrapped
 }
 
+/// Sanitize text for terminal output by replacing tabs with spaces
+/// Prevents terminal tab-stop issues that cause cascading indentation
+fn sanitize_text(text: &str) -> String {
+    text.replace('\t', "    ")
+}
+
+/// Print a line to terminal, ensuring cursor starts at column 0
+/// Prevents cascading indentation by explicitly using \r (carriage return)
+fn print_line(stdout: &mut impl Write, text: &str) -> io::Result<()> {
+    execute!(stdout, Print(format!("\r{}\n", text)))
+}
+
+/// Print a colored line to terminal, ensuring cursor starts at column 0
+fn print_colored_line(stdout: &mut impl Write, text: &str, color: Color) -> io::Result<()> {
+    execute!(
+        stdout,
+        Print("\r"),
+        SetForegroundColor(color),
+        Print(text),
+        ResetColor,
+        Print("\n")
+    )
+}
+
+/// Print a bordered line (for edit preview box)
+/// Format: "│ <text>"
+fn print_bordered_line(stdout: &mut impl Write, text: &str, color: Color) -> io::Result<()> {
+    execute!(
+        stdout,
+        Print("\r│ "),
+        SetForegroundColor(color),
+        Print(text),
+        ResetColor,
+        Print("\n")
+    )
+}
+
 #[derive(Debug)]
 struct EditApprovalState {
     file_path: String,
@@ -289,15 +326,13 @@ impl App {
                 let status_icon = if is_error { "✗" } else { "✓" };
                 let color = if is_error { Color::Red } else { Color::Green };
 
-                queue!(
-                    stdout,
-                    SetForegroundColor(Color::Yellow),
-                    Print(format!("[Tool: {}] ", name)),
-                    SetForegroundColor(color),
-                    Print(format!("{} ", status_icon)),
-                    ResetColor,
-                    Print(format!("{}ms", duration_ms))
-                )?;
+                // Write tool header line atomically (no queue/flush mixing)
+                write!(stdout, "{}", SetForegroundColor(Color::Yellow))?;
+                write!(stdout, "[Tool: {}] ", name)?;
+                write!(stdout, "{}", SetForegroundColor(color))?;
+                write!(stdout, "{} ", status_icon)?;
+                write!(stdout, "{}", ResetColor)?;
+                writeln!(stdout, "{}ms", duration_ms)?;
 
                 // Show command if bash
                 if let Some(command) = input.get("command").and_then(|v| v.as_str()) {
@@ -306,7 +341,8 @@ impl App {
                     } else {
                         command.to_string()
                     };
-                    writeln!(stdout, "\n  Command: {}", truncated)?;
+                    let sanitized = sanitize_text(&truncated);
+                    execute!(stdout, Print(format!("\r  Command: {}\n", sanitized)))?;
                 }
 
                 // Show output preview
@@ -314,18 +350,17 @@ impl App {
                 let has_more = output.lines().count() > 5 || output.len() > 200;
 
                 if !output_lines.is_empty() {
-                    // Print first line with "Output:" label
-                    writeln!(stdout, "\nOutput:")?;
+                    // Print Output label with explicit cursor reset
+                    execute!(stdout, Print("\r\nOutput:\n"))?;
 
-                    // Print each line with consistent indentation
-                    // IMPORTANT: Replace tabs with spaces to avoid terminal tab-stop issues
+                    // Print each line with cursor reset to prevent cascading indentation
                     for line in output_lines {
-                        let line_no_tabs = line.replace('\t', "    "); // 4 spaces per tab
-                        writeln!(stdout, "  {}", line_no_tabs.trim())?;
+                        let sanitized = sanitize_text(line);
+                        execute!(stdout, Print(format!("\r  {}\n", sanitized.trim())))?;
                     }
 
                     if has_more {
-                        writeln!(stdout, "  ...")?;
+                        execute!(stdout, Print("\r  ...\n"))?;
                     }
                 }
 
@@ -438,12 +473,12 @@ impl App {
 
     fn clear_input_line(&self, stdout: &mut impl Write) -> io::Result<()> {
         // Move to beginning of line and clear it
-        queue!(
+        // MUST flush immediately to prevent cascading indentation from queued operations
+        execute!(
             stdout,
             Print("\r"),
             Clear(ClearType::CurrentLine)
-        )?;
-        Ok(())
+        )
     }
 
     fn render_input_line(&mut self, stdout: &mut impl Write) -> io::Result<()> {
@@ -542,15 +577,12 @@ impl App {
     }
 
     fn render_edit_approval_prompt(&self, stdout: &mut impl Write, file_path: &str, diff: &str) -> io::Result<()> {
-        queue!(
-            stdout,
-            SetForegroundColor(Color::Yellow),
-            Print("┌─ Edit Preview ────────────────────────────────────────┐\n"),
-            ResetColor
-        )?;
+        // Top border
+        print_colored_line(stdout, "┌─ Edit Preview ────────────────────────────────────────┐", Color::Yellow)?;
 
-        writeln!(stdout, "│ File: {}", file_path)?;
-        writeln!(stdout, "│")?;
+        // File path
+        print_line(stdout, &format!("│ File: {}", file_path))?;
+        print_line(stdout, "│")?;
 
         // Show diff (truncate if too long)
         let max_lines = 15;
@@ -565,31 +597,24 @@ impl App {
                 Color::White
             };
 
-            queue!(stdout, Print("│ "), SetForegroundColor(color))?;
-            writeln!(stdout, "{}", line)?;
-            queue!(stdout, ResetColor)?;
+            // Sanitize text and print with border
+            let sanitized = sanitize_text(line);
+            print_bordered_line(stdout, &sanitized, color)?;
         }
 
         if diff.lines().count() > max_lines {
-            writeln!(stdout, "│ ...")?;
+            print_line(stdout, "│ ...")?;
         }
 
-        writeln!(stdout, "│")?;
-        queue!(
-            stdout,
-            SetForegroundColor(Color::Cyan),
-            Print("│ [A]ccept  [R]eject\n"),
-            ResetColor
-        )?;
+        print_line(stdout, "│")?;
 
-        queue!(
-            stdout,
-            SetForegroundColor(Color::Yellow),
-            Print("└───────────────────────────────────────────────────────┘\n"),
-            ResetColor
-        )?;
+        // Accept/Reject prompt
+        print_bordered_line(stdout, "[A]ccept  [R]eject", Color::Cyan)?;
 
-        stdout.flush()
+        // Bottom border
+        print_colored_line(stdout, "└───────────────────────────────────────────────────────┘", Color::Yellow)?;
+
+        Ok(())
     }
 
     async fn handle_input(&mut self, stdout: &mut impl Write, key: event::KeyEvent) -> anyhow::Result<()> {
@@ -682,7 +707,8 @@ impl App {
                         Print("You: "),
                         ResetColor
                     )?;
-                    writeln!(stdout, "{}", msg)?;
+                    let sanitized = sanitize_text(&msg);
+                    writeln!(stdout, "{}", sanitized)?;
                     writeln!(stdout)?;
                     stdout.flush()?;
 
