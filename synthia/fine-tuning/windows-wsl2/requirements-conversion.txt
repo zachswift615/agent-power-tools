@@ -1,0 +1,8 @@
+# Conversion Dependencies (llama.cpp)
+# These are minimal requirements for GGUF conversion
+# DO NOT include PyTorch here - we'll use CPU-only torch from llama.cpp
+
+# Core dependencies for llama.cpp conversion scripts
+numpy
+sentencepiece
+gguf>=0.10.0

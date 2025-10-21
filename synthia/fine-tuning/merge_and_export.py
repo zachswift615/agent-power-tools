@@ -32,7 +32,7 @@ MAX_SEQ_LENGTH = 2048  # Must match training config
 # Output configuration
 OUTPUT_BASE = "./outputs/qwen2.5-coder-synthia-merged"
 EXPORT_16BIT = True  # Export 16-bit merged model
-EXPORT_GGUF = True  # Export GGUF for LM Studio
+EXPORT_GGUF = False  # Export GGUF for LM Studio (DISABLED - use convert_to_gguf.sh instead)
 EXPORT_4BIT = False  # Export 4-bit quantized (optional, saves disk space)
 
 # GGUF quantization methods (lower bits = smaller file, slightly lower quality)
@@ -123,41 +123,19 @@ def load_model_with_adapters(model_name, adapter_path, max_seq_length):
     """Load base model and apply LoRA adapters"""
     print_separator("Loading Model with Adapters")
 
-    print(f"Loading base model: {model_name}")
+    print(f"Loading model with trained LoRA adapters from: {adapter_path}")
+    print(f"Note: Loading in 4-bit (as trained), will merge to 16-bit later")
 
-    # Load base model (4-bit for memory efficiency during merge)
+    # Load the model the same way it was trained (4-bit)
+    # The merge step will convert it to full precision
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=model_name,
+        model_name=adapter_path,  # Load from checkpoint
         max_seq_length=max_seq_length,
-        dtype=None,
-        load_in_4bit=True,  # Load in 4-bit to save memory
+        dtype=None,  # Auto-detect
+        load_in_4bit=True,  # Load in 4-bit like training
     )
 
-    print(f"✓ Base model loaded")
-    print_gpu_memory()
-
-    # Load LoRA adapters
-    print(f"\nLoading LoRA adapters from: {adapter_path}")
-
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r=16,  # Should match training config
-        target_modules=[
-            "q_proj", "k_proj", "v_proj", "o_proj",
-            "gate_proj", "up_proj", "down_proj",
-        ],
-        lora_alpha=16,
-        lora_dropout=0.05,
-        bias="none",
-        use_gradient_checkpointing="unsloth",
-        random_state=42,
-    )
-
-    # Load trained adapter weights
-    from peft import PeftModel
-    model = PeftModel.from_pretrained(model, adapter_path)
-
-    print(f"✓ LoRA adapters loaded")
+    print(f"✓ Model loaded with LoRA adapters (4-bit)")
     print_gpu_memory()
 
     return model, tokenizer

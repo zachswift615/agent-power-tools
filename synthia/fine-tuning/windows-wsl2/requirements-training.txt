@@ -1,0 +1,22 @@
+# Training and Merging Dependencies
+# PyTorch nightly with CUDA 12.1 (REQUIRED for torch.int1 support)
+--index-url https://download.pytorch.org/whl/nightly/cu121
+torch
+torchvision
+torchaudio
+
+# Unsloth and dependencies
+unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git
+transformers>=4.51.3,<=4.56.2,!=4.52.0,!=4.52.1,!=4.52.2,!=4.52.3,!=4.53.0,!=4.54.0,!=4.55.0,!=4.55.1
+datasets
+accelerate
+peft
+trl
+bitsandbytes
+scipy
+sentencepiece
+protobuf
+tqdm
+rich
+psutil
+py-cpuinfo
