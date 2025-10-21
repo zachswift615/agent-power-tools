@@ -1,5 +1,6 @@
 pub mod bash;
 pub mod cache;
+pub mod diff;
 pub mod edit;
 pub mod git;
 pub mod glob;
