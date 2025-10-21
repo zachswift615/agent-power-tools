@@ -38,8 +38,13 @@ LORA_ALPHA = 16  # Scaling factor (usually same as rank)
 LORA_DROPOUT = 0.05  # Dropout for regularization (0.0-0.1 typical)
 
 # Training configuration
-DATASET_PATH = "dataset.jsonl"  # Path to training dataset
+DATASET_PATHS = [
+    "data/train.jsonl",  # Original training data (2,472 examples)
+    "data/flask_templates.jsonl",  # Flask template examples
+    "data/failure_recovery.jsonl"  # Failure recovery examples
+]
 OUTPUT_DIR = "./outputs/qwen2.5-coder-synthia-tool-use"  # Where to save checkpoints
+# RESUME_FROM_CHECKPOINT = "./outputs/qwen2.5-coder-synthia-tool-use"  # Uncomment to continue from existing checkpoint
 NUM_TRAIN_EPOCHS = 1  # Number of full passes through dataset
 PER_DEVICE_BATCH_SIZE = 1  # Batch size per GPU (1-2 for 8GB VRAM)
 GRADIENT_ACCUMULATION_STEPS = 8  # Simulate larger batch (effective batch = 1*8 = 8)
@@ -85,17 +90,23 @@ def print_gpu_memory():
     else:
         print("CUDA not available - running on CPU (will be very slow!)")
 
-def load_and_validate_dataset(dataset_path):
-    """Load dataset and validate format"""
+def load_and_validate_dataset(dataset_paths):
+    """Load multiple datasets and combine them"""
     print_separator("Loading Dataset")
 
-    if not os.path.exists(dataset_path):
-        raise FileNotFoundError(f"Dataset not found: {dataset_path}")
+    # Check all files exist
+    for path in dataset_paths:
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Dataset not found: {path}")
 
-    # Load JSONL file
-    dataset = load_dataset('json', data_files=dataset_path, split='train')
+    # Load all JSONL files
+    print(f"Loading {len(dataset_paths)} dataset files...")
+    for path in dataset_paths:
+        print(f"  - {path}")
 
-    print(f"✓ Loaded dataset with {len(dataset)} examples")
+    dataset = load_dataset('json', data_files=dataset_paths, split='train')
+
+    print(f"✓ Loaded combined dataset with {len(dataset)} examples")
 
     # Validate format
     if len(dataset) > 0:
@@ -109,45 +120,62 @@ def load_and_validate_dataset(dataset_path):
 
     return dataset
 
-def create_model_and_tokenizer(model_name, max_seq_length, load_in_4bit, lora_rank, lora_alpha, lora_dropout):
+def create_model_and_tokenizer(model_name, max_seq_length, load_in_4bit, lora_rank, lora_alpha, lora_dropout, resume_from_checkpoint=None):
     """Initialize model and tokenizer with LoRA adapters"""
     print_separator("Initializing Model")
 
-    print(f"Loading model: {model_name}")
-    print(f"Max sequence length: {max_seq_length}")
-    print(f"4-bit quantization: {load_in_4bit}")
-    print(f"LoRA rank: {lora_rank}, alpha: {lora_alpha}, dropout: {lora_dropout}")
+    # Check if we're resuming from a checkpoint
+    if resume_from_checkpoint and os.path.exists(resume_from_checkpoint):
+        print(f"🔄 Resuming from checkpoint: {resume_from_checkpoint}")
+        print(f"Loading existing LoRA adapters...")
 
-    # Load model with Unsloth optimizations
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=model_name,
-        max_seq_length=max_seq_length,
-        dtype=None,  # Auto-detect dtype
-        load_in_4bit=load_in_4bit,  # Use 4-bit quantization
-    )
-
-    print(f"✓ Base model loaded")
-    print_gpu_memory()
-
-    # Set chat template for Qwen models if not already set
-    if tokenizer.chat_template is None:
-        # Use the standard Qwen2.5 chat template
-        from unsloth.chat_templates import get_chat_template
-        tokenizer = get_chat_template(
-            tokenizer,
-            chat_template="qwen-2.5",
+        # Load model with existing LoRA adapters
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=resume_from_checkpoint,  # Load from checkpoint directory
+            max_seq_length=max_seq_length,
+            dtype=None,
+            load_in_4bit=load_in_4bit,
         )
-        print(f"✓ Chat template set for Qwen model")
 
-    # Add LoRA adapters
-    # We target attention and MLP layers for maximum impact
-    model = FastLanguageModel.get_peft_model(
-        model,
-        r=lora_rank,  # LoRA rank
-        target_modules=[
-            "q_proj", "k_proj", "v_proj", "o_proj",  # Attention layers
-            "gate_proj", "up_proj", "down_proj",  # MLP layers
-        ],
+        print(f"✓ Model loaded from checkpoint with existing LoRA adapters")
+        print_gpu_memory()
+
+    else:
+        print(f"Loading model: {model_name}")
+        print(f"Max sequence length: {max_seq_length}")
+        print(f"4-bit quantization: {load_in_4bit}")
+        print(f"LoRA rank: {lora_rank}, alpha: {lora_alpha}, dropout: {lora_dropout}")
+
+        # Load model with Unsloth optimizations
+        model, tokenizer = FastLanguageModel.from_pretrained(
+            model_name=model_name,
+            max_seq_length=max_seq_length,
+            dtype=None,  # Auto-detect dtype
+            load_in_4bit=load_in_4bit,  # Use 4-bit quantization
+        )
+
+        print(f"✓ Base model loaded")
+        print_gpu_memory()
+
+        # Set chat template for Qwen models if not already set
+        if tokenizer.chat_template is None:
+            # Use the standard Qwen2.5 chat template
+            from unsloth.chat_templates import get_chat_template
+            tokenizer = get_chat_template(
+                tokenizer,
+                chat_template="qwen-2.5",
+            )
+            print(f"✓ Chat template set for Qwen model")
+
+        # Add LoRA adapters
+        # We target attention and MLP layers for maximum impact
+        model = FastLanguageModel.get_peft_model(
+            model,
+            r=lora_rank,  # LoRA rank
+            target_modules=[
+                "q_proj", "k_proj", "v_proj", "o_proj",  # Attention layers
+                "gate_proj", "up_proj", "down_proj",  # MLP layers
+            ],
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         bias="none",  # Don't train biases
@@ -224,7 +252,7 @@ def main():
         print(f"Total VRAM: {format_vram(torch.cuda.get_device_properties(0).total_memory)}")
 
     # Step 1: Load dataset
-    dataset = load_and_validate_dataset(DATASET_PATH)
+    dataset = load_and_validate_dataset(DATASET_PATHS)
 
     # Step 2: Initialize model and tokenizer
     model, tokenizer = create_model_and_tokenizer(
@@ -234,6 +262,7 @@ def main():
         lora_rank=LORA_RANK,
         lora_alpha=LORA_ALPHA,
         lora_dropout=LORA_DROPOUT,
+        resume_from_checkpoint=RESUME_FROM_CHECKPOINT if 'RESUME_FROM_CHECKPOINT' in dir() else None,
     )
 
     # Step 3: Format dataset for training
