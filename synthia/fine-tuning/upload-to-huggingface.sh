@@ -10,6 +10,12 @@ HF_REPO="zachswift615/synthia-coder"
 echo "=== Hugging Face Model Upload Script ==="
 echo ""
 
+# Deactivate any currently active virtual environment
+if [ -n "$VIRTUAL_ENV" ]; then
+    echo "Deactivating current virtual environment: $VIRTUAL_ENV"
+    deactivate || true  # Don't fail if deactivate doesn't exist
+fi
+
 # Check if venv exists, create if it doesn't
 if [ ! -d "$VENV_PATH" ]; then
     echo "Virtual environment not found. Creating at $VENV_PATH..."
