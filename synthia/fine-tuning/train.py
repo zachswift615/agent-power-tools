@@ -258,6 +258,9 @@ def format_messages_for_training(examples, tokenizer):
             tokenize=False,
             add_generation_prompt=False
         )
+        # CRITICAL FIX: Append EOS token so model learns when to stop
+        # Without this, model will never generate EOS and get stuck in infinite loops
+        text = text + tokenizer.eos_token
         texts.append(text)
     return {"text": texts}
 
