@@ -40,29 +40,48 @@ OUTPUT_BASE="$FINE_TUNING_DIR/outputs/qwen2.5-coder-synthia-merged"
 # Cleanup Check
 # =============================================================================
 
-if [ -d "$OUTPUT_BASE" ]; then
-    print_header "Cleanup Check"
-    print_warning "Existing output directory found: $OUTPUT_BASE"
+print_header "Cleanup Check"
 
-    # Show what will be deleted
-    OUTPUT_SIZE=$(du -sh "$OUTPUT_BASE" 2>/dev/null | cut -f1 || echo "unknown")
-    print_info "Current size: $OUTPUT_SIZE"
+LORA_CHECKPOINT="$FINE_TUNING_DIR/outputs/qwen2.5-coder-synthia-tool-use"
+MERGED_OUTPUT="$OUTPUT_BASE"
 
-    echo -e "${WHITE}This directory will be deleted to ensure a clean merge.${NC}"
-    echo -e "${YELLOW}Do you want to delete it and continue? (y/N):${NC} "
+# Check training checkpoint
+if [ -d "$LORA_CHECKPOINT" ]; then
+    CHECKPOINT_SIZE=$(du -sh "$LORA_CHECKPOINT" 2>/dev/null | cut -f1 || echo "unknown")
+    print_info "Found training checkpoint: $LORA_CHECKPOINT ($CHECKPOINT_SIZE)"
+    echo -e "${YELLOW}Delete training checkpoint? (keeps if you want to skip training) (y/N):${NC} "
     read -r response
 
     if [[ "$response" =~ ^[Yy]$ ]]; then
-        print_info "Deleting existing output directory..."
-        rm -rf "$OUTPUT_BASE"
-        print_success "Output directory cleaned"
+        print_info "Deleting training checkpoint..."
+        rm -rf "$LORA_CHECKPOINT"
+        print_success "Training checkpoint deleted"
     else
-        print_error "User chose not to delete existing outputs"
-        print_info "Pipeline cancelled. Please manually clean or backup:"
-        print_info "  $OUTPUT_BASE"
-        exit 0
+        print_success "Keeping training checkpoint (can skip training later)"
     fi
+else
+    print_info "No existing training checkpoint found"
 fi
+
+# Check merged model output
+if [ -d "$MERGED_OUTPUT" ]; then
+    MERGED_SIZE=$(du -sh "$MERGED_OUTPUT" 2>/dev/null | cut -f1 || echo "unknown")
+    print_info "Found merged model output: $MERGED_OUTPUT ($MERGED_SIZE)"
+    echo -e "${YELLOW}Delete merged model output? (recommended for clean merge) (Y/n):${NC} "
+    read -r response
+
+    if [[ "$response" =~ ^[Nn]$ ]]; then
+        print_warning "Keeping existing merged output (may cause conflicts)"
+    else
+        print_info "Deleting merged model output..."
+        rm -rf "$MERGED_OUTPUT"
+        print_success "Merged model output deleted"
+    fi
+else
+    print_info "No existing merged model output found"
+fi
+
+echo ""
 
 # =============================================================================
 # Step 1: Setup Training Environment
@@ -129,22 +148,49 @@ fi
 print_success "PyTorch CUDA verified"
 
 # =============================================================================
-# Step 2: Run Training
+# Step 2: Run Training (or skip if checkpoint exists)
 # =============================================================================
 
-print_header "Step 2: Running Fine-Tuning"
+# Note: LORA_CHECKPOINT is already defined in Cleanup Check section
+SKIP_TRAINING=false
 
-cd "$FINE_TUNING_DIR"
+if [ -d "$LORA_CHECKPOINT" ] && [ -f "$LORA_CHECKPOINT/adapter_model.safetensors" ]; then
+    print_header "Training Checkpoint Detected"
+    print_info "Found existing LoRA checkpoint at: $LORA_CHECKPOINT"
 
-print_info "Starting training (this takes ~30-60 minutes)..."
-python train.py
+    CHECKPOINT_SIZE=$(du -sh "$LORA_CHECKPOINT" 2>/dev/null | cut -f1 || echo "unknown")
+    print_info "Checkpoint size: $CHECKPOINT_SIZE"
 
-if [ $? -ne 0 ]; then
-    print_error "Training failed!"
-    exit 1
+    echo -e "${YELLOW}Do you want to skip training and use this checkpoint? (Y/n):${NC} "
+    read -r response
+
+    if [[ "$response" =~ ^[Nn]$ ]]; then
+        print_warning "Will retrain - existing checkpoint will be overwritten"
+        SKIP_TRAINING=false
+    else
+        print_success "Skipping training - using existing checkpoint"
+        SKIP_TRAINING=true
+    fi
 fi
 
-print_success "Training completed"
+if [ "$SKIP_TRAINING" = false ]; then
+    print_header "Step 2: Running Fine-Tuning"
+
+    cd "$FINE_TUNING_DIR"
+
+    print_info "Starting training (this takes ~30-60 minutes)..."
+    python train.py
+
+    if [ $? -ne 0 ]; then
+        print_error "Training failed!"
+        exit 1
+    fi
+
+    print_success "Training completed"
+else
+    print_header "Step 2: Skipping Training (Using Checkpoint)"
+    print_success "Using existing LoRA checkpoint from previous training"
+fi
 
 # =============================================================================
 # Step 3: Merge LoRA Adapters

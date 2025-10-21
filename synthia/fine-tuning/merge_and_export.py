@@ -144,24 +144,20 @@ def merge_and_export_16bit(model, tokenizer, output_path):
     """Merge LoRA adapters and export 16-bit model"""
     print_separator("Exporting 16-bit Merged Model")
 
-    print("Merging LoRA adapters into base model...")
-    print("This may take 5-10 minutes...")
-
-    # Merge adapters into base weights
-    model = model.merge_and_unload()
-
-    print(f"✓ Adapters merged")
-    print_gpu_memory()
-
-    # Save merged model
-    print(f"\nSaving to: {output_path}")
+    print("Merging and dequantizing to 16-bit...")
+    print("This may take 5-10 minutes and will use more VRAM...")
 
     os.makedirs(output_path, exist_ok=True)
 
-    model.save_pretrained(output_path)
-    tokenizer.save_pretrained(output_path)
+    # Use Unsloth's save_pretrained_merged which properly dequantizes 4-bit to 16-bit
+    model.save_pretrained_merged(
+        output_path,
+        tokenizer,
+        save_method="merged_16bit",  # Dequantize to FP16
+    )
 
-    print(f"✓ 16-bit model saved")
+    print(f"✓ Model merged and dequantized to 16-bit")
+    print_gpu_memory()
 
     # Print model size
     model_size = get_directory_size(output_path)
