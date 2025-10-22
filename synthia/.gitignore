@@ -14,6 +14,9 @@ __pycache__/
 venv/
 .Python
 
+# Unsloth build cache
+unsloth_compiled_cache/
+
 # macOS
 .DS_Store
 
