@@ -81,11 +81,11 @@ echo "Logging into Hugging Face..."
 # Check if HF_TOKEN environment variable is set
 if [ -n "$HF_TOKEN" ]; then
     echo "✓ Using HF_TOKEN from environment variable"
-    huggingface-cli login --token "$HF_TOKEN"
+    hf login --token "$HF_TOKEN"
 else
     echo "Please paste your Hugging Face token (get it from https://huggingface.co/settings/tokens)"
     echo "Or set HF_TOKEN environment variable to avoid this prompt"
-    huggingface-cli login
+    hf login
 fi
 
 echo ""
@@ -95,7 +95,7 @@ echo ""
 
 # Upload the GGUF model
 echo "1. Uploading GGUF model..."
-huggingface-cli upload "$HF_REPO" "$MODEL_PATH" --repo-type model
+hf upload "$HF_REPO" "$MODEL_PATH" --repo-type model
 echo "   ✓ GGUF model uploaded"
 
 # Upload tokenizer files
@@ -104,7 +104,7 @@ echo "2. Uploading tokenizer files..."
 for file in tokenizer.json tokenizer_config.json config.json special_tokens_map.json generation_config.json; do
     if [ -f "$TOKENIZER_DIR/$file" ]; then
         echo "   Uploading $file..."
-        huggingface-cli upload "$HF_REPO" "$TOKENIZER_DIR/$file" --repo-type model
+        hf upload "$HF_REPO" "$TOKENIZER_DIR/$file" --repo-type model
         echo "   ✓ $file uploaded"
     fi
 done
