@@ -13,7 +13,14 @@ echo ""
 # Deactivate any currently active virtual environment
 if [ -n "$VIRTUAL_ENV" ]; then
     echo "Deactivating current virtual environment: $VIRTUAL_ENV"
-    deactivate || true  # Don't fail if deactivate doesn't exist
+    # Check if deactivate function exists before calling it
+    if declare -f deactivate > /dev/null; then
+        deactivate
+    else
+        # Manually unset VIRTUAL_ENV if deactivate doesn't exist
+        unset VIRTUAL_ENV
+        export PATH=$(echo "$PATH" | sed -e "s|$VIRTUAL_ENV/bin:||g")
+    fi
 fi
 
 # Check if venv exists, create if it doesn't
@@ -76,16 +83,17 @@ fi
 echo ""
 
 # Login to Hugging Face
-echo "Logging into Hugging Face..."
+echo "Checking Hugging Face authentication..."
 
 # Check if HF_TOKEN environment variable is set
 if [ -n "$HF_TOKEN" ]; then
-    echo "✓ Using HF_TOKEN from environment variable"
-    hf login --token "$HF_TOKEN"
+    echo "✓ HF_TOKEN found in environment - will use for authentication"
+    # No need to login explicitly - hf upload will use HF_TOKEN automatically
 else
+    echo "Logging into Hugging Face..."
     echo "Please paste your Hugging Face token (get it from https://huggingface.co/settings/tokens)"
-    echo "Or set HF_TOKEN environment variable to avoid this prompt"
-    hf login
+    echo "Or set HF_TOKEN environment variable to skip this prompt"
+    huggingface-cli login  # Fall back to old command for interactive login
 fi
 
 echo ""
