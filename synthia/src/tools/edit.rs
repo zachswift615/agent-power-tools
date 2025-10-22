@@ -54,7 +54,10 @@ impl Tool for EditTool {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'new_string' parameter"))?;
 
-        let content = fs::read_to_string(file_path).await?;
+        // Expand tilde and environment variables
+        let path = super::expand_path(file_path)?;
+
+        let content = fs::read_to_string(&path).await?;
 
         if !content.contains(old_string) {
             return Ok(ToolResult {
@@ -64,10 +67,10 @@ impl Tool for EditTool {
         }
 
         let new_content = content.replace(old_string, new_string);
-        fs::write(file_path, new_content).await?;
+        fs::write(&path, new_content).await?;
 
         Ok(ToolResult {
-            content: format!("Successfully edited {}", file_path),
+            content: format!("Successfully edited {}", path.display()),
             is_error: false,
         })
     }

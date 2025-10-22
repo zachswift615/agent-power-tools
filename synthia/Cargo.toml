@@ -26,6 +26,7 @@ regex = "1"
 lru = "0.12"
 which = "6"
 similar = { version = "2.3", features = ["inline"] }
+shellexpand = "3.1"
 
 [dev-dependencies]
 tokio-test = "0.4"

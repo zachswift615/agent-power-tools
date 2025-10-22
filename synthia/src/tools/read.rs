@@ -41,12 +41,14 @@ impl Tool for ReadTool {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'file_path' parameter"))?;
 
-        let path = Path::new(file_path);
-        let content = match fs::read_to_string(path).await {
+        // Expand tilde and environment variables
+        let path = super::expand_path(file_path)?;
+
+        let content = match fs::read_to_string(&path).await {
             Ok(c) => c,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 return Ok(ToolResult {
-                    content: format!("File not found: {}", file_path),
+                    content: format!("File not found: {}", path.display()),
                     is_error: true,
                 });
             }

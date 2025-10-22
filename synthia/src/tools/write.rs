@@ -48,15 +48,17 @@ impl Tool for WriteTool {
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("Missing 'content' parameter"))?;
 
-        let path = Path::new(file_path);
+        // Expand tilde and environment variables
+        let path = super::expand_path(file_path)?;
+
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).await?;
         }
 
-        fs::write(path, content).await?;
+        fs::write(&path, content).await?;
 
         Ok(ToolResult {
-            content: format!("Successfully wrote to {}", file_path),
+            content: format!("Successfully wrote to {}", path.display()),
             is_error: false,
         })
     }

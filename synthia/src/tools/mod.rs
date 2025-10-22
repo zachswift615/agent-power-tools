@@ -15,6 +15,14 @@ pub mod write;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
+use std::path::PathBuf;
+
+/// Expand tilde (~) and environment variables in a file path
+pub fn expand_path(path: &str) -> Result<PathBuf> {
+    let expanded = shellexpand::full(path)
+        .map_err(|e| anyhow::anyhow!("Failed to expand path '{}': {}", path, e))?;
+    Ok(PathBuf::from(expanded.as_ref()))
+}
 
 #[derive(Debug, Clone)]
 pub struct ToolResult {

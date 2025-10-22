@@ -15,8 +15,44 @@ const MAX_BATCH_SIZE: usize = 1000;
 const BATCH_TIMEOUT_MS: u64 = 10;
 
 /// Wrap text at word boundaries for a given terminal width
-/// Handles Unicode properly and breaks long words (URLs, hashes) at width boundaries
+/// Markdown-aware: preserves newlines, code blocks, and indentation
 fn wrap_text(text: &str, width: usize) -> String {
+    let mut result = String::new();
+    let mut in_code_block = false;
+
+    for line in text.lines() {
+        // Check for code block markers
+        if line.trim_start().starts_with("```") {
+            in_code_block = !in_code_block;
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        }
+
+        // If in code block, preserve the line exactly
+        if in_code_block {
+            result.push_str(line);
+            result.push('\n');
+            continue;
+        }
+
+        // Empty lines are preserved
+        if line.trim().is_empty() {
+            result.push('\n');
+            continue;
+        }
+
+        // Wrap regular lines
+        let wrapped_line = wrap_single_line(line, width);
+        result.push_str(&wrapped_line);
+        result.push('\n');
+    }
+
+    result.trim_end().to_string()
+}
+
+/// Wrap a single line of text at word boundaries
+fn wrap_single_line(text: &str, width: usize) -> String {
     let mut wrapped = String::new();
     let mut current_line = String::new();
     let mut current_width = 0;
@@ -251,14 +287,18 @@ impl App {
                 let usable_width = (width as usize).saturating_sub(10); // -10 for "Synthia: " prefix
                 let wrapped = wrap_text(&text, usable_width);
 
-                queue!(
+                execute!(
                     stdout,
                     SetForegroundColor(Color::Cyan),
                     Print("Synthia: "),
                     ResetColor
                 )?;
-                writeln!(stdout, "{}", wrapped)?;
-                writeln!(stdout)?;
+
+                // Print each line with explicit carriage return
+                for line in wrapped.lines() {
+                    execute!(stdout, Print(format!("\r{}\n", line)))?;
+                }
+                execute!(stdout, Print("\r\n"))?;
                 stdout.flush()?;
                 self.input_needs_render = true;
             }
@@ -402,14 +442,19 @@ impl App {
                     self.clear_input_line(stdout)?;
 
                     // Re-print with proper wrapping
-                    queue!(
+                    // Print line-by-line to ensure proper carriage returns
+                    execute!(
                         stdout,
                         SetForegroundColor(Color::Cyan),
                         Print("Synthia: "),
                         ResetColor
                     )?;
-                    writeln!(stdout, "{}", wrapped)?;
-                    writeln!(stdout)?;
+
+                    // Print each line with explicit carriage return
+                    for line in wrapped.lines() {
+                        execute!(stdout, Print(format!("\r{}\n", line)))?;
+                    }
+                    execute!(stdout, Print("\r\n"))?;
 
                     self.is_streaming = false;
                     self.streaming_buffer.clear();
@@ -580,30 +625,84 @@ impl App {
         // Top border
         print_colored_line(stdout, "┌─ Edit Preview ────────────────────────────────────────┐", Color::Yellow)?;
 
-        // File path
-        print_line(stdout, &format!("│ File: {}", file_path))?;
-        print_line(stdout, "│")?;
-
-        // Show diff (truncate if too long)
-        let max_lines = 15;
-        let diff_lines: Vec<&str> = diff.lines().take(max_lines).collect();
-
-        for line in diff_lines {
-            let color = if line.starts_with('+') {
-                Color::Green
+        // Count changes
+        let mut additions = 0;
+        let mut deletions = 0;
+        for line in diff.lines() {
+            if line.starts_with('+') {
+                additions += 1;
             } else if line.starts_with('-') {
-                Color::Red
-            } else {
-                Color::White
-            };
-
-            // Sanitize text and print with border
-            let sanitized = sanitize_text(line);
-            print_bordered_line(stdout, &sanitized, color)?;
+                deletions += 1;
+            }
         }
 
-        if diff.lines().count() > max_lines {
-            print_line(stdout, "│ ...")?;
+        // File path and change summary
+        print_line(stdout, &format!("│ File: {}", file_path))?;
+        print_line(stdout, &format!("│ Changes: +{} lines, -{} lines", additions, deletions))?;
+        print_line(stdout, "│")?;
+
+        // Focused diff: show only changed sections with context
+        let context_lines = 2; // Show 2 lines of context around changes
+        let max_consecutive_unchanged = 3; // Collapse if more than 3 unchanged lines in a row
+
+        let all_lines: Vec<&str> = diff.lines().collect();
+        let mut i = 0;
+        let mut shown_lines = 0;
+        let max_total_lines = 100; // Absolute max to prevent overwhelming output
+
+        while i < all_lines.len() && shown_lines < max_total_lines {
+            let line = all_lines[i];
+
+            // Check if this line or nearby lines have changes
+            let has_nearby_change = {
+                let start = i.saturating_sub(context_lines);
+                let end = (i + context_lines + 1).min(all_lines.len());
+                all_lines[start..end].iter().any(|l| l.starts_with('+') || l.starts_with('-'))
+            };
+
+            if has_nearby_change {
+                // Show this line (it's a change or near a change)
+                let color = if line.starts_with('+') {
+                    Color::Green
+                } else if line.starts_with('-') {
+                    Color::Red
+                } else {
+                    Color::DarkGrey // Context lines in grey
+                };
+
+                let sanitized = sanitize_text(line);
+                print_bordered_line(stdout, &sanitized, color)?;
+                shown_lines += 1;
+                i += 1;
+            } else {
+                // Look ahead to find the next change
+                let mut skip_count = 0;
+                let mut next_change_idx = i;
+                while next_change_idx < all_lines.len() {
+                    if all_lines[next_change_idx].starts_with('+') || all_lines[next_change_idx].starts_with('-') {
+                        break;
+                    }
+                    skip_count += 1;
+                    next_change_idx += 1;
+                }
+
+                if skip_count > max_consecutive_unchanged {
+                    // Collapse this section
+                    print_line(stdout, &format!("│ ... ({} unchanged lines) ...", skip_count))?;
+                    shown_lines += 1;
+                    i = next_change_idx;
+                } else {
+                    // Just show this line
+                    let sanitized = sanitize_text(line);
+                    print_bordered_line(stdout, &sanitized, Color::DarkGrey)?;
+                    shown_lines += 1;
+                    i += 1;
+                }
+            }
+        }
+
+        if i < all_lines.len() {
+            print_line(stdout, &format!("│ ... ({} more lines not shown) ...", all_lines.len() - i))?;
         }
 
         print_line(stdout, "│")?;
