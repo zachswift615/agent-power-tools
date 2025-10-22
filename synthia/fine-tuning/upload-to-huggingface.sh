@@ -77,8 +77,16 @@ echo ""
 
 # Login to Hugging Face
 echo "Logging into Hugging Face..."
-echo "Please paste your Hugging Face token (get it from https://huggingface.co/settings/tokens)"
-huggingface-cli login
+
+# Check if HF_TOKEN environment variable is set
+if [ -n "$HF_TOKEN" ]; then
+    echo "✓ Using HF_TOKEN from environment variable"
+    huggingface-cli login --token "$HF_TOKEN"
+else
+    echo "Please paste your Hugging Face token (get it from https://huggingface.co/settings/tokens)"
+    echo "Or set HF_TOKEN environment variable to avoid this prompt"
+    huggingface-cli login
+fi
 
 echo ""
 echo "=== Uploading model to Hugging Face ==="
