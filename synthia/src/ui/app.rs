@@ -881,6 +881,8 @@ impl App {
     }
 
     async fn handle_input(&mut self, stdout: &mut impl Write, key: event::KeyEvent) -> anyhow::Result<()> {
+        tracing::debug!("Key event: {:?} with modifiers: {:?}", key.code, key.modifiers);
+
         // Handle edit approval input
         if let Some(approval_state) = self.pending_edit_approval.take() {
             match (key.code, key.modifiers) {
@@ -1110,9 +1112,11 @@ impl App {
                 self.cmd_tx.send(Command::ListSessions).await?;
             }
             (KeyCode::Char('m'), KeyModifiers::CONTROL) => {
+                tracing::info!("Ctrl+M pressed - opening menu");
                 self.show_menu = true;
                 self.menu_selected = 0;
                 self.render_menu(stdout)?;
+                tracing::info!("Menu rendered, show_menu={}", self.show_menu);
                 return Ok(());
             }
             (KeyCode::Enter, _) => {
