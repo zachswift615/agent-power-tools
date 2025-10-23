@@ -75,6 +75,7 @@ impl ContextManager {
                     temperature: 0.3, // Low temp for factual summary
                     max_tokens: Some(500),
                     streaming: false,
+                    reasoning_level: "medium".to_string(),
                 },
             )
             .await?;

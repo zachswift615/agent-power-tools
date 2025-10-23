@@ -26,10 +26,10 @@ impl OpenAICompatibleProvider {
         }
     }
 
-    fn convert_messages(&self, messages: Vec<Message>) -> Vec<Value> {
+    fn convert_messages(&self, messages: Vec<Message>, reasoning_level: &str) -> Vec<Value> {
         let mut result = Vec::new();
 
-        for msg in messages {
+        for (idx, msg) in messages.iter().enumerate() {
             let role = match msg.role {
                 Role::User => "user",
                 Role::Assistant => "assistant",
@@ -41,10 +41,10 @@ impl OpenAICompatibleProvider {
             let mut tool_calls = Vec::new();
             let mut tool_results = Vec::new();
 
-            for block in msg.content {
+            for block in &msg.content {
                 match block {
                     ContentBlock::Text { text } => {
-                        text_parts.push(text);
+                        text_parts.push(text.clone());
                     }
                     ContentBlock::ToolUse { id, name, input } => {
                         tool_calls.push(json!({
@@ -61,7 +61,7 @@ impl OpenAICompatibleProvider {
                         content,
                         is_error,
                     } => {
-                        tool_results.push((tool_use_id, content, is_error));
+                        tool_results.push((tool_use_id.clone(), content.clone(), *is_error));
                     }
                 }
             }
@@ -91,9 +91,16 @@ impl OpenAICompatibleProvider {
                 result.push(message);
             } else if !text_parts.is_empty() {
                 // Regular text message
+                let mut content = text_parts.join("\n");
+
+                // Inject reasoning level into first system message
+                if idx == 0 && role == "system" {
+                    content = format!("{}\n\nReasoning: {}", content, reasoning_level);
+                }
+
                 result.push(json!({
                     "role": role,
-                    "content": text_parts.join("\n")
+                    "content": content
                 }));
             }
         }
@@ -112,9 +119,16 @@ impl LLMProvider for OpenAICompatibleProvider {
     ) -> Result<LLMResponse> {
         let url = format!("{}/chat/completions", self.api_base);
 
+        let converted_messages = self.convert_messages(messages, &config.reasoning_level);
+
+        // Log the first message to verify reasoning level injection
+        if let Some(first_msg) = converted_messages.first() {
+            tracing::debug!("First message after conversion: {}", serde_json::to_string_pretty(&first_msg).unwrap_or_else(|_| "{}".to_string()));
+        }
+
         let mut request_body = json!({
             "model": config.model,
-            "messages": self.convert_messages(messages),
+            "messages": converted_messages,
             "temperature": config.temperature,
         });
 
@@ -260,7 +274,7 @@ impl LLMProvider for OpenAICompatibleProvider {
 
         let mut request_body = json!({
             "model": config.model,
-            "messages": self.convert_messages(messages),
+            "messages": self.convert_messages(messages, &config.reasoning_level),
             "temperature": config.temperature,
             "stream": true,
         });
@@ -471,10 +485,30 @@ mod tests {
             }],
         }];
 
-        let converted = provider.convert_messages(messages);
+        let converted = provider.convert_messages(messages, "medium");
         assert_eq!(converted.len(), 1);
         assert_eq!(converted[0]["role"], "user");
         assert_eq!(converted[0]["content"], "Hello");
+    }
+
+    #[test]
+    fn test_reasoning_level_injection_into_system_message() {
+        let provider = OpenAICompatibleProvider::new(
+            "http://localhost:1234/v1".to_string(),
+            None,
+        );
+
+        let messages = vec![Message {
+            role: Role::System,
+            content: vec![ContentBlock::Text {
+                text: "You are a helpful assistant.".to_string(),
+            }],
+        }];
+
+        let converted = provider.convert_messages(messages, "high");
+        assert_eq!(converted.len(), 1);
+        assert_eq!(converted[0]["role"], "system");
+        assert_eq!(converted[0]["content"], "You are a helpful assistant.\n\nReasoning: high");
     }
 
     #[test]
@@ -498,7 +532,7 @@ mod tests {
             ],
         }];
 
-        let converted = provider.convert_messages(messages);
+        let converted = provider.convert_messages(messages, "medium");
         assert_eq!(converted.len(), 1);
         assert_eq!(converted[0]["role"], "assistant");
         assert_eq!(converted[0]["content"], "I'll use a tool");
@@ -525,7 +559,7 @@ mod tests {
             }],
         }];
 
-        let converted = provider.convert_messages(messages);
+        let converted = provider.convert_messages(messages, "medium");
         assert_eq!(converted.len(), 1);
         assert_eq!(converted[0]["role"], "tool");
         assert_eq!(converted[0]["tool_call_id"], "call_123");

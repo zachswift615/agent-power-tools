@@ -11,6 +11,7 @@ pub struct GenerationConfig {
     pub max_tokens: Option<u32>,
     pub model: String,
     pub streaming: bool,
+    pub reasoning_level: String,  // "low", "medium", "high"
 }
 
 #[derive(Debug, Clone)]

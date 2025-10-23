@@ -10,7 +10,8 @@ mod tests {
     use crate::llm::{GenerationConfig, LLMProvider};
     use crate::tools::registry::ToolRegistry;
     use crate::tools::{Tool, ToolResult};
-    use crate::types::{ChatResponse, ContentBlock, Message, Role, StopReason};
+    use crate::llm::LLMResponse;
+    use crate::types::{ContentBlock, Message, Role, StopReason, TokenUsage};
     use anyhow::Result;
     use async_trait::async_trait;
     use serde_json::Value;
@@ -59,7 +60,7 @@ mod tests {
 
     /// Mock LLM provider for testing
     struct MockLLMProvider {
-        response: ChatResponse,
+        response: LLMResponse,
     }
 
     #[async_trait]
@@ -69,7 +70,7 @@ mod tests {
             _messages: Vec<Message>,
             _tools: Vec<Value>,
             _config: &GenerationConfig,
-        ) -> Result<ChatResponse> {
+        ) -> Result<LLMResponse> {
             Ok(self.response.clone())
         }
 
@@ -115,7 +116,7 @@ mod tests {
             .unwrap();
 
         // Create a mock LLM that returns 3 tool calls
-        let mock_response = ChatResponse {
+        let mock_response = LLMResponse {
             content: vec![
                 ContentBlock::Text {
                     text: "I'll execute 3 tools in parallel".to_string(),
@@ -136,7 +137,11 @@ mod tests {
                     input: serde_json::json!({"duration_ms": 100}),
                 },
             ],
-            stop_reason: StopReason::ToolUse,
+            stop_reason: StopReason::StopSequence,  // Used for tool calls
+            usage: TokenUsage {
+                input_tokens: 0,
+                output_tokens: 0,
+            },
         };
 
         let llm = Arc::new(MockLLMProvider {
@@ -151,6 +156,7 @@ mod tests {
             temperature: 1.0,
             max_tokens: Some(1000),
             streaming: false,
+            reasoning_level: "medium".to_string(),
         };
 
         // Create actor (this would normally be done via AgentActor::new, but we'll construct manually for testing)

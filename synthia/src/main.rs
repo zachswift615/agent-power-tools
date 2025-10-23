@@ -71,6 +71,7 @@ async fn main() -> Result<()> {
         temperature: config.llm.temperature,
         max_tokens: config.llm.max_tokens,
         streaming: config.llm.streaming,
+        reasoning_level: "medium".to_string(),  // default
     };
     let mut agent = AgentActor::new(
         llm_provider,
