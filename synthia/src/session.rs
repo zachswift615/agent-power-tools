@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     pub id: String,
+    pub name: Option<String>,  // Optional friendly name
     pub created_at: i64,
     pub last_modified: i64,
     pub model: String,
@@ -18,6 +19,7 @@ impl Session {
         let now = chrono::Utc::now().timestamp();
         Self {
             id: generate_session_id(),
+            name: None,
             created_at: now,
             last_modified: now,
             model,
@@ -27,6 +29,11 @@ impl Session {
 
     pub fn add_message(&mut self, message: Message) {
         self.messages.push(message);
+        self.last_modified = chrono::Utc::now().timestamp();
+    }
+
+    pub fn set_name(&mut self, name: String) {
+        self.name = Some(name);
         self.last_modified = chrono::Utc::now().timestamp();
     }
 
@@ -73,6 +80,7 @@ impl Session {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionInfo {
     pub id: String,
+    pub name: Option<String>,
     pub created_at: i64,
     pub last_modified: i64,
     pub model: String,
@@ -83,6 +91,7 @@ impl From<&Session> for SessionInfo {
     fn from(session: &Session) -> Self {
         Self {
             id: session.id.clone(),
+            name: session.name.clone(),
             created_at: session.created_at,
             last_modified: session.last_modified,
             model: session.model.clone(),
