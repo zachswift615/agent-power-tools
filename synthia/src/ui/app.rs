@@ -997,17 +997,34 @@ impl App {
                     return Ok(());
                 }
                 (KeyCode::Char(c), _) => {
-                    self.session_name_input.push(c);
+                    self.session_name_input.insert(self.session_name_cursor, c);
                     self.session_name_cursor += 1;
                     self.render_session_name_input(stdout)?;
                     return Ok(());
                 }
                 (KeyCode::Backspace, _) => {
                     if self.session_name_cursor > 0 {
+                        self.session_name_input.remove(self.session_name_cursor - 1);
                         self.session_name_cursor -= 1;
-                        self.session_name_input.pop();
                         self.render_session_name_input(stdout)?;
                     }
+                    return Ok(());
+                }
+                (KeyCode::Delete, _) => {
+                    if self.session_name_cursor < self.session_name_input.len() {
+                        self.session_name_input.remove(self.session_name_cursor);
+                        self.render_session_name_input(stdout)?;
+                    }
+                    return Ok(());
+                }
+                (KeyCode::Home, _) => {
+                    self.session_name_cursor = 0;
+                    self.render_session_name_input(stdout)?;
+                    return Ok(());
+                }
+                (KeyCode::End, _) => {
+                    self.session_name_cursor = self.session_name_input.len();
+                    self.render_session_name_input(stdout)?;
                     return Ok(());
                 }
                 (KeyCode::Left, _) => {
