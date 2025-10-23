@@ -1113,6 +1113,7 @@ impl App {
                 self.show_menu = true;
                 self.menu_selected = 0;
                 self.render_menu(stdout)?;
+                return Ok(());
             }
             (KeyCode::Enter, _) => {
                 if !self.input.is_empty() {
