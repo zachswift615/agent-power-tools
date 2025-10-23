@@ -621,13 +621,18 @@ impl App {
                 queue!(stdout, SetForegroundColor(Color::Cyan))?;
             }
 
+            // Display session name if available, otherwise just show ID
+            let display_name = session.name.as_ref()
+                .map(|n| format!("{} ({})", n, &session.id[..session.id.len().min(10)]))
+                .unwrap_or_else(|| session.id[..session.id.len().min(30)].to_string());
+
             writeln!(
                 stdout,
                 "{} {} - {} msgs - {}",
                 selected,
                 timestamp,
                 session.message_count,
-                &session.id[..session.id.len().min(30)]
+                display_name
             )?;
 
             if idx == self.session_list_selected {
