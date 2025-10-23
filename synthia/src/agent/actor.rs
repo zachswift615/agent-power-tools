@@ -262,6 +262,18 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                         }
                     }
                 }
+                Command::SetSessionName(_name) => {
+                    // TODO: Implement in Task 4
+                    tracing::warn!("SetSessionName command not yet implemented");
+                }
+                Command::SetReasoningLevel(_level) => {
+                    // TODO: Implement in Task 4
+                    tracing::warn!("SetReasoningLevel command not yet implemented");
+                }
+                Command::ShowMenu => {
+                    // TODO: Implement in Task 4
+                    tracing::warn!("ShowMenu command not yet implemented");
+                }
             }
         }
 

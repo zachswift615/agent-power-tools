@@ -7,6 +7,9 @@ pub enum Command {
     NewSession,
     LoadSession(String),
     ListSessions,
+    SetSessionName(String),
+    SetReasoningLevel(String),
+    ShowMenu,
 }
 
 #[derive(Debug, Clone)]
