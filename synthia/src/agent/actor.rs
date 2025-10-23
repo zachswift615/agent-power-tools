@@ -162,6 +162,12 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                     self.context_manager.add_message(message.clone());
                     self.session.add_message(message);
 
+                    // TODO: Generate AI session name from first message
+                    // if self.session.messages.len() == 1 && self.session.name.is_none() {
+                    //     // Generate short summary via LLM
+                    //     // session.set_name(summary)
+                    // }
+
                     if let Err(e) = self.generate_response().await {
                         self.ui_tx
                             .send(UIUpdate::Error(format!("Agent error: {}", e)))
