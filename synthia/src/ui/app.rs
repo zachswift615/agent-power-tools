@@ -1111,8 +1111,8 @@ impl App {
             (KeyCode::Char('l'), KeyModifiers::CONTROL) => {
                 self.cmd_tx.send(Command::ListSessions).await?;
             }
-            (KeyCode::Char('m'), KeyModifiers::CONTROL) => {
-                tracing::info!("Ctrl+M pressed - opening menu");
+            (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
+                tracing::info!("Ctrl+P pressed - opening menu");
                 self.show_menu = true;
                 self.menu_selected = 0;
                 self.render_menu(stdout)?;
