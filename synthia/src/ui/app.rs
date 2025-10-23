@@ -180,6 +180,9 @@ pub struct App {
     menu_selected: usize,         // NEW: Selected menu item index
     show_reasoning_submenu: bool, // NEW: Reasoning submenu display flag
     reasoning_submenu_selected: usize, // NEW: Selected reasoning level index
+    show_session_name_input: bool,  // NEW: Session name input modal flag
+    session_name_input: String,     // NEW: Separate from main input
+    session_name_cursor: usize,     // NEW: Cursor position for session name input
 }
 
 impl App {
@@ -203,6 +206,9 @@ impl App {
             menu_selected: 0,         // NEW
             show_reasoning_submenu: false, // NEW
             reasoning_submenu_selected: 1, // NEW: default to "medium" (index 1)
+            show_session_name_input: false,   // NEW
+            session_name_input: String::new(), // NEW
+            session_name_cursor: 0,            // NEW
         }
     }
 
@@ -801,22 +807,38 @@ impl App {
         stdout.flush()
     }
 
+    fn render_session_name_input(&self, stdout: &mut impl Write) -> io::Result<()> {
+        execute!(stdout, Clear(ClearType::FromCursorDown))?;
+
+        print_colored_line(stdout, "Enter session name (Enter to confirm, Esc to cancel):", Color::Yellow)?;
+
+        queue!(
+            stdout,
+            SetForegroundColor(Color::Green),
+            Print("Name: "),
+            ResetColor,
+            Print(&self.session_name_input),
+        )?;
+
+        // Position cursor
+        let cursor_x = 6 + self.session_name_cursor; // "Name: " = 6 chars
+        queue!(stdout, cursor::MoveTo(cursor_x as u16, 3))?;
+
+        stdout.flush()
+    }
+
     async fn handle_menu_selection(&mut self, stdout: &mut impl Write) -> anyhow::Result<()> {
         match self.menu_selected {
             0 => {
                 // Set Session Name
                 self.show_menu = false;
+                self.show_session_name_input = true;
+                self.session_name_input.clear();
+                self.session_name_cursor = 0;
+
                 execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
                 self.print_header(stdout)?;
-
-                // Prompt for name
-                print_colored_line(stdout, "Enter session name:", Color::Yellow)?;
-                self.input.clear();
-                self.cursor_position = 0;
-                self.input_needs_render = true;
-
-                // TODO: Capture input and send SetSessionName command
-                // For now, this is a placeholder
+                self.render_session_name_input(stdout)?;
             }
             1 => {
                 // Save Session
@@ -942,6 +964,64 @@ impl App {
                     self.show_reasoning_submenu = false;
                     self.show_menu = true;
                     self.render_menu(stdout)?;
+                    return Ok(());
+                }
+                _ => return Ok(()),
+            }
+        }
+
+        // Handle session name input
+        if self.show_session_name_input {
+            match (key.code, key.modifiers) {
+                (KeyCode::Enter, _) => {
+                    if !self.session_name_input.is_empty() {
+                        self.cmd_tx.send(Command::SetSessionName(self.session_name_input.clone())).await?;
+
+                        execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                        self.print_header(stdout)?;
+                        print_colored_line(stdout, &format!("Session name set to: {}", self.session_name_input), Color::Green)?;
+                    }
+
+                    self.show_session_name_input = false;
+                    self.session_name_input.clear();
+                    self.session_name_cursor = 0;
+                    return Ok(());
+                }
+                (KeyCode::Esc, _) => {
+                    self.show_session_name_input = false;
+                    self.session_name_input.clear();
+                    self.session_name_cursor = 0;
+
+                    execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                    self.print_header(stdout)?;
+                    return Ok(());
+                }
+                (KeyCode::Char(c), _) => {
+                    self.session_name_input.push(c);
+                    self.session_name_cursor += 1;
+                    self.render_session_name_input(stdout)?;
+                    return Ok(());
+                }
+                (KeyCode::Backspace, _) => {
+                    if self.session_name_cursor > 0 {
+                        self.session_name_cursor -= 1;
+                        self.session_name_input.pop();
+                        self.render_session_name_input(stdout)?;
+                    }
+                    return Ok(());
+                }
+                (KeyCode::Left, _) => {
+                    if self.session_name_cursor > 0 {
+                        self.session_name_cursor -= 1;
+                        self.render_session_name_input(stdout)?;
+                    }
+                    return Ok(());
+                }
+                (KeyCode::Right, _) => {
+                    if self.session_name_cursor < self.session_name_input.len() {
+                        self.session_name_cursor += 1;
+                        self.render_session_name_input(stdout)?;
+                    }
                     return Ok(());
                 }
                 _ => return Ok(()),
