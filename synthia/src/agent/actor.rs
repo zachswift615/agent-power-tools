@@ -262,17 +262,26 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                         }
                     }
                 }
-                Command::SetSessionName(_name) => {
-                    // TODO: Implement in Task 4
-                    tracing::warn!("SetSessionName command not yet implemented");
+                Command::SetSessionName(name) => {
+                    self.session.set_name(name.clone());
+                    if let Err(e) = self.session.save() {
+                        tracing::error!("Failed to save session after setting name: {}", e);
+                    } else {
+                        tracing::info!("Session name set to: {}", name);
+                    }
                 }
-                Command::SetReasoningLevel(_level) => {
-                    // TODO: Implement in Task 4
-                    tracing::warn!("SetReasoningLevel command not yet implemented");
+                Command::SetReasoningLevel(level) => {
+                    // Validate level
+                    if !["low", "medium", "high"].contains(&level.as_str()) {
+                        tracing::warn!("Invalid reasoning level: {}, ignoring", level);
+                        continue;
+                    }
+                    self.config.reasoning_level = level.clone();
+                    tracing::info!("Reasoning level set to: {}", level);
                 }
                 Command::ShowMenu => {
-                    // TODO: Implement in Task 4
-                    tracing::warn!("ShowMenu command not yet implemented");
+                    // UI will handle the menu display, just send a response
+                    let _ = self.ui_tx.send(UIUpdate::MenuDisplayRequested).await;
                 }
             }
         }

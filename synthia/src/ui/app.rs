@@ -511,6 +511,10 @@ impl App {
                 // Show diff preview
                 self.render_edit_approval_prompt(stdout, &file_path, &diff)?;
             }
+            UIUpdate::MenuDisplayRequested => {
+                // Menu display is triggered by Ctrl+M in handle_input, not via UIUpdate
+                // This variant is a no-op for now
+            }
         }
 
         Ok(())

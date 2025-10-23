@@ -45,4 +45,5 @@ pub enum UIUpdate {
         diff: String,
         response_tx: tokio::sync::oneshot::Sender<ApprovalResponse>,
     },
+    MenuDisplayRequested,  // Signal UI to display menu
 }
