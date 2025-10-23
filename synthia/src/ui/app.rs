@@ -745,9 +745,7 @@ impl App {
     }
 
     fn render_menu(&self, stdout: &mut impl Write) -> io::Result<()> {
-        // Clear screen and reset cursor to prevent menu duplication
-        execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
-        self.print_header(stdout)?;
+        self.clear_input_line(stdout)?;
 
         execute!(stdout, Print("\r\n=== Synthia Menu (↑/↓ navigate | Enter select | Esc cancel) ===\n"))?;
 
