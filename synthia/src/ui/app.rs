@@ -260,7 +260,12 @@ impl App {
             }
 
             // Render input line only after all input processed
-            if !self.show_session_list && self.input_needs_render {
+            if !self.show_session_list
+                && !self.show_menu
+                && !self.show_reasoning_submenu
+                && !self.show_session_name_input
+                && self.input_needs_render
+            {
                 self.render_input_line(&mut stdout)?;
                 self.input_needs_render = false;
             }
