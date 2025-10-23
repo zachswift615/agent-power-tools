@@ -176,6 +176,8 @@ pub struct App {
     input_needs_render: bool, // Track if input line needs re-rendering
     is_rendering_input: bool, // Guard flag to prevent concurrent input renders
     pending_edit_approval: Option<EditApprovalState>,
+    show_menu: bool,              // NEW: Menu display flag
+    menu_selected: usize,         // NEW: Selected menu item index
 }
 
 impl App {
@@ -195,6 +197,8 @@ impl App {
             input_needs_render: true, // Render on first loop
             is_rendering_input: false, // Not rendering initially
             pending_edit_approval: None,
+            show_menu: false,         // NEW
+            menu_selected: 0,         // NEW
         }
     }
 
@@ -720,6 +724,93 @@ impl App {
         Ok(())
     }
 
+    fn render_menu(&self, stdout: &mut impl Write) -> io::Result<()> {
+        self.clear_input_line(stdout)?;
+
+        writeln!(stdout, "\n=== Synthia Menu (↑/↓ navigate | Enter select | Esc cancel) ===")?;
+
+        let menu_items = vec![
+            "Set Session Name",
+            "Save Session",
+            "New Session",
+            "Set Reasoning Level",
+            "Context Management (Coming Soon)",
+            "Toggle Mode (Coming Soon)",
+        ];
+
+        for (idx, item) in menu_items.iter().enumerate() {
+            let selected = if idx == self.menu_selected { ">" } else { " " };
+
+            if idx == self.menu_selected {
+                queue!(stdout, SetForegroundColor(Color::Cyan))?;
+            }
+
+            // Dim "Coming Soon" items
+            if item.contains("Coming Soon") {
+                queue!(stdout, SetForegroundColor(Color::DarkGrey))?;
+            }
+
+            writeln!(stdout, "{} {}", selected, item)?;
+
+            if idx == self.menu_selected || item.contains("Coming Soon") {
+                queue!(stdout, ResetColor)?;
+            }
+        }
+
+        writeln!(stdout)?;
+        stdout.flush()
+    }
+
+    async fn handle_menu_selection(&mut self, stdout: &mut impl Write) -> anyhow::Result<()> {
+        match self.menu_selected {
+            0 => {
+                // Set Session Name
+                self.show_menu = false;
+                execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                self.print_header(stdout)?;
+
+                // Prompt for name
+                print_colored_line(stdout, "Enter session name:", Color::Yellow)?;
+                self.input.clear();
+                self.cursor_position = 0;
+                self.input_needs_render = true;
+
+                // TODO: Capture input and send SetSessionName command
+                // For now, this is a placeholder
+            }
+            1 => {
+                // Save Session
+                self.cmd_tx.send(Command::SaveSession).await?;
+                self.show_menu = false;
+                execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                self.print_header(stdout)?;
+            }
+            2 => {
+                // New Session
+                self.cmd_tx.send(Command::NewSession).await?;
+                self.show_menu = false;
+                execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                self.print_header(stdout)?;
+            }
+            3 => {
+                // Set Reasoning Level - show submenu (stub for now)
+                self.show_menu = false;
+                execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                self.print_header(stdout)?;
+                print_colored_line(stdout, "Reasoning level submenu: Coming in next task", Color::Yellow)?;
+            }
+            4 | 5 => {
+                // Coming Soon items - do nothing
+                self.show_menu = false;
+                execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                self.print_header(stdout)?;
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
+
     async fn handle_input(&mut self, stdout: &mut impl Write, key: event::KeyEvent) -> anyhow::Result<()> {
         // Handle edit approval input
         if let Some(approval_state) = self.pending_edit_approval.take() {
@@ -741,6 +832,38 @@ impl App {
                     self.pending_edit_approval = Some(approval_state);
                     return Ok(());
                 }
+            }
+        }
+
+        // Handle menu navigation
+        if self.show_menu {
+            match key.code {
+                KeyCode::Up => {
+                    if self.menu_selected > 0 {
+                        self.menu_selected -= 1;
+                        self.render_menu(stdout)?;
+                    }
+                    return Ok(());
+                }
+                KeyCode::Down => {
+                    let menu_item_count = 6;  // Total menu items
+                    if self.menu_selected < menu_item_count - 1 {
+                        self.menu_selected += 1;
+                        self.render_menu(stdout)?;
+                    }
+                    return Ok(());
+                }
+                KeyCode::Enter => {
+                    self.handle_menu_selection(stdout).await?;
+                    return Ok(());
+                }
+                KeyCode::Esc => {
+                    self.show_menu = false;
+                    execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                    self.print_header(stdout)?;
+                    return Ok(());
+                }
+                _ => return Ok(()),
             }
         }
 
@@ -797,6 +920,11 @@ impl App {
             }
             (KeyCode::Char('l'), KeyModifiers::CONTROL) => {
                 self.cmd_tx.send(Command::ListSessions).await?;
+            }
+            (KeyCode::Char('m'), KeyModifiers::CONTROL) => {
+                self.show_menu = true;
+                self.menu_selected = 0;
+                self.render_menu(stdout)?;
             }
             (KeyCode::Enter, _) => {
                 if !self.input.is_empty() {
