@@ -747,7 +747,7 @@ impl App {
     fn render_menu(&self, stdout: &mut impl Write) -> io::Result<()> {
         self.clear_input_line(stdout)?;
 
-        writeln!(stdout, "\n=== Synthia Menu (↑/↓ navigate | Enter select | Esc cancel) ===")?;
+        execute!(stdout, Print("\r\n=== Synthia Menu (↑/↓ navigate | Enter select | Esc cancel) ===\n"))?;
 
         let menu_items = vec![
             "Set Session Name",
@@ -770,14 +770,14 @@ impl App {
                 queue!(stdout, SetForegroundColor(Color::DarkGrey))?;
             }
 
-            writeln!(stdout, "{} {}", selected, item)?;
+            execute!(stdout, Print(format!("\r{} {}\n", selected, item)))?;
 
             if idx == self.menu_selected || item.contains("Coming Soon") {
                 queue!(stdout, ResetColor)?;
             }
         }
 
-        writeln!(stdout)?;
+        execute!(stdout, Print("\r\n"))?;
         stdout.flush()
     }
 
