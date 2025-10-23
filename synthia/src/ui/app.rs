@@ -178,6 +178,8 @@ pub struct App {
     pending_edit_approval: Option<EditApprovalState>,
     show_menu: bool,              // NEW: Menu display flag
     menu_selected: usize,         // NEW: Selected menu item index
+    show_reasoning_submenu: bool, // NEW: Reasoning submenu display flag
+    reasoning_submenu_selected: usize, // NEW: Selected reasoning level index
 }
 
 impl App {
@@ -199,6 +201,8 @@ impl App {
             pending_edit_approval: None,
             show_menu: false,         // NEW
             menu_selected: 0,         // NEW
+            show_reasoning_submenu: false, // NEW
+            reasoning_submenu_selected: 1, // NEW: default to "medium" (index 1)
         }
     }
 
@@ -761,6 +765,42 @@ impl App {
         stdout.flush()
     }
 
+    fn show_reasoning_submenu(&mut self, stdout: &mut impl Write) -> io::Result<()> {
+        self.show_menu = false;
+        self.show_reasoning_submenu = true;
+        self.reasoning_submenu_selected = 1; // Default to medium
+        self.render_reasoning_submenu(stdout)
+    }
+
+    fn render_reasoning_submenu(&self, stdout: &mut impl Write) -> io::Result<()> {
+        self.clear_input_line(stdout)?;
+
+        writeln!(stdout, "\n=== Select Reasoning Level (↑/↓ navigate | Enter select | Esc cancel) ===")?;
+
+        let levels = vec![
+            ("Low", "Fast responses for general dialogue"),
+            ("Medium", "Balanced speed and detail"),
+            ("High", "Deep and detailed analysis"),
+        ];
+
+        for (idx, (level, desc)) in levels.iter().enumerate() {
+            let selected = if idx == self.reasoning_submenu_selected { ">" } else { " " };
+
+            if idx == self.reasoning_submenu_selected {
+                queue!(stdout, SetForegroundColor(Color::Cyan))?;
+            }
+
+            writeln!(stdout, "{} {} - {}", selected, level, desc)?;
+
+            if idx == self.reasoning_submenu_selected {
+                queue!(stdout, ResetColor)?;
+            }
+        }
+
+        writeln!(stdout)?;
+        stdout.flush()
+    }
+
     async fn handle_menu_selection(&mut self, stdout: &mut impl Write) -> anyhow::Result<()> {
         match self.menu_selected {
             0 => {
@@ -793,11 +833,8 @@ impl App {
                 self.print_header(stdout)?;
             }
             3 => {
-                // Set Reasoning Level - show submenu (stub for now)
-                self.show_menu = false;
-                execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
-                self.print_header(stdout)?;
-                print_colored_line(stdout, "Reasoning level submenu: Coming in next task", Color::Yellow)?;
+                // Set Reasoning Level - show submenu
+                self.show_reasoning_submenu(stdout)?;
             }
             4 | 5 => {
                 // Coming Soon items - do nothing
@@ -861,6 +898,50 @@ impl App {
                     self.show_menu = false;
                     execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
                     self.print_header(stdout)?;
+                    return Ok(());
+                }
+                _ => return Ok(()),
+            }
+        }
+
+        // Handle reasoning submenu navigation
+        if self.show_reasoning_submenu {
+            match key.code {
+                KeyCode::Up => {
+                    if self.reasoning_submenu_selected > 0 {
+                        self.reasoning_submenu_selected -= 1;
+                        self.render_reasoning_submenu(stdout)?;
+                    }
+                    return Ok(());
+                }
+                KeyCode::Down => {
+                    if self.reasoning_submenu_selected < 2 {  // 3 options (0, 1, 2)
+                        self.reasoning_submenu_selected += 1;
+                        self.render_reasoning_submenu(stdout)?;
+                    }
+                    return Ok(());
+                }
+                KeyCode::Enter => {
+                    let level = match self.reasoning_submenu_selected {
+                        0 => "low",
+                        1 => "medium",
+                        2 => "high",
+                        _ => "medium",
+                    };
+
+                    self.cmd_tx.send(Command::SetReasoningLevel(level.to_string())).await?;
+                    self.show_reasoning_submenu = false;
+                    execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                    self.print_header(stdout)?;
+
+                    print_colored_line(stdout, &format!("Reasoning level set to: {}", level), Color::Green)?;
+
+                    return Ok(());
+                }
+                KeyCode::Esc => {
+                    self.show_reasoning_submenu = false;
+                    self.show_menu = true;
+                    self.render_menu(stdout)?;
                     return Ok(());
                 }
                 _ => return Ok(()),
