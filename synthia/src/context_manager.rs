@@ -12,6 +12,17 @@ pub struct ContextManager {
     max_messages: usize,
     summary_threshold: usize,
     llm_provider: Arc<dyn LLMProvider>,
+    current_token_count: usize,      // Track current context tokens
+    max_token_limit: usize,          // Model's max context window
+    token_threshold_percent: f32,    // Auto-compact at this % (default 0.8)
+}
+
+#[derive(Debug, Clone)]
+pub struct TokenStats {
+    pub current: usize,
+    pub max: usize,
+    pub threshold: usize,
+    pub usage_percent: f32,
 }
 
 impl ContextManager {
@@ -21,6 +32,9 @@ impl ContextManager {
             max_messages: MAX_MESSAGES,
             summary_threshold: SUMMARY_THRESHOLD,
             llm_provider,
+            current_token_count: 0,
+            max_token_limit: 8192,  // Default, should be configurable per model
+            token_threshold_percent: 0.8,
         }
     }
 
@@ -28,11 +42,62 @@ impl ContextManager {
         self.messages.push(message);
     }
 
+    /// Set the max token limit for this model
+    pub fn set_max_token_limit(&mut self, limit: usize) {
+        self.max_token_limit = limit;
+        tracing::info!("Context manager max token limit set to {}", limit);
+    }
+
+    /// Update token count after each response
+    pub fn update_token_count(&mut self, input_tokens: usize, output_tokens: usize) {
+        self.current_token_count = input_tokens + output_tokens;
+
+        let threshold = (self.max_token_limit as f32 * self.token_threshold_percent) as usize;
+        let usage_percent = (self.current_token_count as f32 / self.max_token_limit as f32) * 100.0;
+
+        tracing::debug!(
+            "Token usage: {} / {} ({:.1}%)",
+            self.current_token_count,
+            self.max_token_limit,
+            usage_percent
+        );
+
+        if self.current_token_count >= threshold {
+            tracing::info!("Token threshold reached ({}/{} = {:.1}%), compaction recommended",
+                self.current_token_count, self.max_token_limit, usage_percent);
+        }
+    }
+
+    /// Check if auto-compaction should trigger
+    pub fn should_compact(&self) -> bool {
+        let threshold = (self.max_token_limit as f32 * self.token_threshold_percent) as usize;
+        self.current_token_count >= threshold
+    }
+
+    /// Get current token usage stats
+    pub fn get_token_stats(&self) -> TokenStats {
+        let threshold = (self.max_token_limit as f32 * self.token_threshold_percent) as usize;
+        let usage_percent = (self.current_token_count as f32 / self.max_token_limit as f32) * 100.0;
+
+        TokenStats {
+            current: self.current_token_count,
+            max: self.max_token_limit,
+            threshold,
+            usage_percent,
+        }
+    }
+
     pub async fn compact_if_needed(&mut self) -> Result<()> {
-        if self.messages.len() >= self.summary_threshold {
+        // Use token-based threshold instead of message count
+        if self.should_compact() {
             self.summarize_oldest_messages().await?;
+
+            // After compaction, estimate new token count (conservative: assume 50% reduction)
+            self.current_token_count = (self.current_token_count as f32 * 0.5) as usize;
+            tracing::info!("Estimated token count after compaction: {}", self.current_token_count);
         }
 
+        // Keep hard message limit as a safety fallback
         if self.messages.len() >= self.max_messages {
             // Hard truncate
             let to_remove = self.messages.len() - self.max_messages;
@@ -215,9 +280,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_compact_at_threshold() {
+    async fn test_compact_at_token_threshold() {
         let provider = Arc::new(MockLLMProvider);
         let mut context_manager = ContextManager::new(provider);
+        context_manager.set_max_token_limit(1000); // Small limit for testing
 
         // Add system message first
         context_manager.add_message(Message {
@@ -227,8 +293,8 @@ mod tests {
             }],
         });
 
-        // Add messages up to summary threshold
-        for i in 0..SUMMARY_THRESHOLD {
+        // Add several messages
+        for i in 0..10 {
             context_manager.add_message(Message {
                 role: Role::User,
                 content: vec![ContentBlock::Text {
@@ -237,13 +303,23 @@ mod tests {
             });
         }
 
-        assert_eq!(context_manager.get_messages().len(), SUMMARY_THRESHOLD + 1);
+        let initial_count = context_manager.get_messages().len();
 
-        // Should trigger summarization
+        // Simulate reaching 80% token usage
+        context_manager.update_token_count(600, 200); // 800 tokens = 80%
+
+        assert!(context_manager.should_compact());
+
+        // Trigger compaction
         context_manager.compact_if_needed().await.unwrap();
 
-        // Should have fewer messages now (system + summary + recent 60%)
-        assert!(context_manager.get_messages().len() < SUMMARY_THRESHOLD + 1);
+        // Token count should be reduced (estimated to 50%)
+        let stats = context_manager.get_token_stats();
+        assert!(stats.current < 800);
+        assert_eq!(stats.current, 400); // 50% of 800
+
+        // Message count should also be reduced
+        assert!(context_manager.get_messages().len() < initial_count);
     }
 
     #[tokio::test]
