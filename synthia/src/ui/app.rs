@@ -295,6 +295,9 @@ pub struct App {
     session_name_input: String,     // NEW: Separate from main input
     session_name_cursor: usize,     // NEW: Cursor position for session name input
     token_stats: Option<TokenStats>, // NEW: Token usage stats for header display
+    show_log_viewer: bool,          // NEW: JSONL log viewer modal flag
+    log_entries: Vec<String>,       // NEW: Log entries to display
+    log_viewer_selected: usize,     // NEW: Selected log entry index
 }
 
 impl App {
@@ -324,6 +327,9 @@ impl App {
             session_name_input: String::new(), // NEW
             session_name_cursor: 0,            // NEW
             token_stats: None,                 // NEW
+            show_log_viewer: false,            // NEW
+            log_entries: Vec::new(),           // NEW
+            log_viewer_selected: 0,            // NEW
         }
     }
 
@@ -380,6 +386,7 @@ impl App {
                 && !self.show_reasoning_submenu
                 && !self.show_context_submenu
                 && !self.show_session_name_input
+                && !self.show_log_viewer
                 && self.input_needs_render
             {
                 self.render_input_line(&mut stdout)?;
@@ -1002,6 +1009,19 @@ impl App {
         stdout.flush()
     }
 
+    fn render_log_viewer(&self, stdout: &mut impl Write) -> io::Result<()> {
+        execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+
+        execute!(stdout, Print("\r\n=== JSONL Activity Logs (Esc to close) ===\n"))?;
+
+        if self.log_entries.is_empty() {
+            execute!(stdout, Print("\rNo JSONL logs loaded for this project.\n"))?;
+            execute!(stdout, Print("\r\n(Full JSONL viewer implementation coming in Phase 3)\n"))?;
+        }
+
+        stdout.flush()
+    }
+
     async fn handle_context_submenu_selection(&mut self, stdout: &mut impl Write) -> anyhow::Result<()> {
         match self.context_submenu_selected {
             0 => {
@@ -1019,11 +1039,11 @@ impl App {
                 self.print_header(stdout)?;
             }
             2 => {
-                // View Activity Logs (placeholder - not yet implemented)
+                // View Activity Logs
                 self.show_context_submenu = false;
-                execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
-                self.print_header(stdout)?;
-                print_colored_line(stdout, "Activity logs feature coming soon!", Color::Yellow)?;
+                self.show_log_viewer = true;
+                self.log_entries.clear();  // TODO: Load actual JSONL entries
+                self.render_log_viewer(stdout)?;
             }
             _ => {}
         }
@@ -1300,6 +1320,19 @@ impl App {
                         self.session_name_cursor += 1;
                         self.render_session_name_input(stdout)?;
                     }
+                    return Ok(());
+                }
+                _ => return Ok(()),
+            }
+        }
+
+        // Handle log viewer navigation
+        if self.show_log_viewer {
+            match key.code {
+                KeyCode::Esc => {
+                    self.show_log_viewer = false;
+                    execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                    self.print_header(stdout)?;
                     return Ok(());
                 }
                 _ => return Ok(()),
