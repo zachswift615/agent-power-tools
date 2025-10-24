@@ -1,7 +1,9 @@
 mod agent;
 mod config;
 mod context_manager;
+mod jsonl_logger;
 mod llm;
+mod project;
 mod session;
 mod tools;
 mod types;

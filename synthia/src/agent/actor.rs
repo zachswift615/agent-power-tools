@@ -1,11 +1,14 @@
 use super::messages::{Command, UIUpdate};
 use crate::context_manager::ContextManager;
+use crate::jsonl_logger::{JsonlLogger, JsonlEntry, RequestLog, ResponseLog, TokenUsageLog, MessageLog};
 use crate::llm::json_parser::JsonParser;
 use crate::llm::{GenerationConfig, LLMProvider, StreamEvent};
+use crate::project::{detect_project_root, extract_project_name, normalize_project_name};
 use crate::session::Session;
 use crate::tools::registry::ToolRegistry;
-use crate::types::{ContentBlock, Message, Role, StopReason};
+use crate::types::{ContentBlock, Message, Role, StopReason, TokenUsage};
 use anyhow::Result;
+use chrono::Utc;
 use futures::future::join_all;
 use futures::StreamExt;
 use std::collections::HashMap;
@@ -26,6 +29,7 @@ pub struct AgentActor {
     cancel_requested: bool,
     tool_call_count: usize, // Track tool calls in current turn
     json_parser: JsonParser, // For robust JSON parsing
+    jsonl_logger: JsonlLogger, // For logging request/response turns
 }
 
 impl AgentActor {
@@ -87,6 +91,24 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
         let mut context_manager = ContextManager::new(llm_provider.clone());
         context_manager.add_message(Self::create_system_prompt());
 
+        // Detect project and create JSONL logger
+        let project_name = detect_project_root()
+            .and_then(|root| extract_project_name(&root))
+            .map(|name| normalize_project_name(&name))
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to detect project root: {}, using 'default'", e);
+                "default".to_string()
+            });
+
+        let jsonl_logger = JsonlLogger::new(&project_name)
+            .unwrap_or_else(|e| {
+                tracing::error!("Failed to create JSONL logger: {}, continuing without logging", e);
+                // Create a fallback logger with "default" project
+                JsonlLogger::new("default").expect("Failed to create fallback logger")
+            });
+
+        tracing::info!("Initialized JSONL logger for project: {}", project_name);
+
         Self {
             llm_provider,
             tool_registry,
@@ -100,6 +122,7 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
             cancel_requested: false,
             tool_call_count: 0,
             json_parser: JsonParser::new(),
+            jsonl_logger,
         }
     }
 
@@ -128,6 +151,23 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
             context_manager.add_message(message.clone());
         }
 
+        // Detect project and create JSONL logger
+        let project_name = detect_project_root()
+            .and_then(|root| extract_project_name(&root))
+            .map(|name| normalize_project_name(&name))
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to detect project root: {}, using 'default'", e);
+                "default".to_string()
+            });
+
+        let jsonl_logger = JsonlLogger::new(&project_name)
+            .unwrap_or_else(|e| {
+                tracing::error!("Failed to create JSONL logger: {}, continuing without logging", e);
+                JsonlLogger::new("default").expect("Failed to create fallback logger")
+            });
+
+        tracing::info!("Initialized JSONL logger for project: {}", project_name);
+
         Self {
             llm_provider,
             tool_registry,
@@ -141,11 +181,93 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
             cancel_requested: false,
             tool_call_count: 0,
             json_parser: JsonParser::new(),
+            jsonl_logger,
         }
     }
 
     pub fn session_id(&self) -> &str {
         &self.session.id
+    }
+
+    /// Convert internal Message to MessageLog for JSONL logging
+    fn message_to_log(msg: &Message) -> MessageLog {
+        let role = match msg.role {
+            Role::User => "user",
+            Role::Assistant => "assistant",
+            Role::System => "system",
+        }.to_string();
+
+        // Extract text content from all ContentBlocks
+        let content = msg.content.iter()
+            .filter_map(|block| match block {
+                ContentBlock::Text { text } => Some(text.clone()),
+                ContentBlock::ToolUse { name, input, .. } => {
+                    Some(format!("[Tool: {}] {}", name, serde_json::to_string(input).unwrap_or_default()))
+                }
+                ContentBlock::ToolResult { content, is_error, .. } => {
+                    let prefix = if *is_error { "[Tool Error]" } else { "[Tool Result]" };
+                    Some(format!("{} {}", prefix, content))
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        MessageLog { role, content }
+    }
+
+    /// Log the current turn to JSONL
+    fn log_turn(&mut self, usage: &TokenUsage, stop_reason: Option<&StopReason>) {
+        // Convert conversation messages to MessageLog format
+        let messages: Vec<MessageLog> = self.conversation.iter()
+            .map(|msg| Self::message_to_log(msg))
+            .collect();
+
+        // Extract system prompt if present
+        let system = if let Some(first_msg) = self.conversation.first() {
+            if matches!(first_msg.role, Role::System) {
+                if let Some(ContentBlock::Text { text }) = first_msg.content.first() {
+                    Some(text.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Get the last assistant message content for response
+        let response_content = self.conversation.iter()
+            .rev()
+            .find(|msg| matches!(msg.role, Role::Assistant))
+            .map(|msg| Self::message_to_log(msg).content)
+            .unwrap_or_default();
+
+        let entry = JsonlEntry {
+            timestamp: Utc::now(),
+            request: RequestLog {
+                model: self.config.model.clone(),
+                messages,
+                system,
+            },
+            response: ResponseLog {
+                content: response_content,
+                stop_reason: stop_reason.map(|sr| match sr {
+                    StopReason::EndTurn => "end_turn",
+                    StopReason::MaxTokens => "max_tokens",
+                    StopReason::StopSequence => "stop_sequence",
+                }.to_string()),
+            },
+            token_usage: TokenUsageLog {
+                input_tokens: usage.input_tokens,
+                output_tokens: usage.output_tokens,
+            },
+        };
+
+        if let Err(e) = self.jsonl_logger.log_turn(entry) {
+            tracing::error!("Failed to log turn to JSONL: {}", e);
+        }
     }
 
     pub async fn run(&mut self) -> Result<()> {
@@ -394,6 +516,11 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
 
         let mut accumulated_text = String::new();
         let mut tool_calls: HashMap<String, (String, String)> = HashMap::new(); // id -> (name, accumulated_args)
+        let mut token_usage = TokenUsage {
+            input_tokens: 0,
+            output_tokens: 0,
+        };
+        let mut stop_reason_opt: Option<StopReason> = None;
 
         while let Some(event_result) = stream.next().await {
             // Check for pending cancel commands (non-blocking)
@@ -430,7 +557,9 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                             args.push_str(&arguments_delta);
                         }
                     }
-                    StreamEvent::Done { stop_reason: _reason, usage: _ } => {
+                    StreamEvent::Done { stop_reason, usage } => {
+                        token_usage = usage;
+                        stop_reason_opt = Some(stop_reason);
                         break;
                     }
                     StreamEvent::Error(err) => {
@@ -608,6 +737,9 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
             }
         }
 
+        // Log the turn to JSONL
+        self.log_turn(&token_usage, stop_reason_opt.as_ref());
+
         Ok(())
     }
 
@@ -625,6 +757,10 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                 &self.config,
             )
             .await?;
+
+        // Capture token usage and stop reason for logging
+        let token_usage = response.usage.clone();
+        let stop_reason = response.stop_reason.clone();
 
         // Add the full assistant response as a single message
         let assistant_message = Message {
@@ -788,6 +924,9 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                 }
             }
         }
+
+        // Log the turn to JSONL
+        self.log_turn(&token_usage, Some(&stop_reason));
 
         Ok(())
     }
