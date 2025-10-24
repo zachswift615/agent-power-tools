@@ -411,6 +411,36 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                     // UI will handle the menu display, just send a response
                     let _ = self.ui_tx.send(UIUpdate::MenuDisplayRequested).await;
                 }
+                Command::CompactContext => {
+                    tracing::info!("Manual compaction requested");
+
+                    if let Err(e) = self.context_manager.compact_if_needed().await {
+                        tracing::error!("Failed to compact context: {}", e);
+                        let _ = self.ui_tx.send(UIUpdate::SystemMessage(
+                            format!("Compaction failed: {}", e)
+                        )).await;
+                    } else {
+                        // Update conversation
+                        self.conversation = self.context_manager.get_messages().to_vec();
+
+                        let stats = self.context_manager.get_token_stats();
+                        let _ = self.ui_tx.send(UIUpdate::SystemMessage(
+                            format!(
+                                "Context compacted successfully. Usage: {} / {} tokens ({:.1}%)",
+                                stats.current, stats.max, stats.usage_percent
+                            )
+                        )).await;
+                    }
+                }
+                Command::ViewContextStats => {
+                    let stats = self.context_manager.get_token_stats();
+                    let _ = self.ui_tx.send(UIUpdate::SystemMessage(
+                        format!(
+                            "Context Usage: {} / {} tokens ({:.1}%) | Threshold: {} tokens (80%)",
+                            stats.current, stats.max, stats.usage_percent, stats.threshold
+                        )
+                    )).await;
+                }
             }
         }
 

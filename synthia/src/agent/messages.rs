@@ -10,6 +10,8 @@ pub enum Command {
     SetSessionName(String),
     SetReasoningLevel(String),
     ShowMenu,
+    CompactContext,
+    ViewContextStats,
 }
 
 #[derive(Debug, Clone)]
