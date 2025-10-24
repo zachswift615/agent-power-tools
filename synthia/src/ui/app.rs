@@ -3,7 +3,7 @@ use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyModifiers},
     execute, queue,
-    style::{Color, Print, ResetColor, SetForegroundColor},
+    style::{Attribute, Color, Print, ResetColor, SetAttribute, SetForegroundColor},
     terminal::{disable_raw_mode, enable_raw_mode, size, Clear, ClearType},
 };
 use std::io::{self, Write};
@@ -150,6 +150,114 @@ fn print_bordered_line(stdout: &mut impl Write, text: &str, color: Color) -> io:
         ResetColor,
         Print("\n")
     )
+}
+
+/// Render a line of text with markdown formatting using crossterm
+/// Supports: **bold**, *italic*, `code`
+fn render_markdown_line(stdout: &mut impl Write, line: &str) -> io::Result<()> {
+    let mut chars = line.chars().peekable();
+    let mut current = String::new();
+
+    queue!(stdout, Print("\r"))?;
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            // Bold: **text**
+            '*' if chars.peek() == Some(&'*') => {
+                // Print accumulated text
+                if !current.is_empty() {
+                    queue!(stdout, Print(&current))?;
+                    current.clear();
+                }
+
+                chars.next(); // consume second *
+                let mut bold_text = String::new();
+
+                // Collect until closing **
+                while let Some(c) = chars.next() {
+                    if c == '*' && chars.peek() == Some(&'*') {
+                        chars.next(); // consume second *
+                        break;
+                    }
+                    bold_text.push(c);
+                }
+
+                if !bold_text.is_empty() {
+                    queue!(
+                        stdout,
+                        SetAttribute(Attribute::Bold),
+                        Print(&bold_text),
+                        SetAttribute(Attribute::Reset)
+                    )?;
+                }
+            }
+            // Italic: *text*
+            '*' => {
+                // Print accumulated text
+                if !current.is_empty() {
+                    queue!(stdout, Print(&current))?;
+                    current.clear();
+                }
+
+                let mut italic_text = String::new();
+
+                // Collect until closing *
+                while let Some(c) = chars.next() {
+                    if c == '*' {
+                        break;
+                    }
+                    italic_text.push(c);
+                }
+
+                if !italic_text.is_empty() {
+                    queue!(
+                        stdout,
+                        SetAttribute(Attribute::Italic),
+                        Print(&italic_text),
+                        SetAttribute(Attribute::Reset)
+                    )?;
+                }
+            }
+            // Inline code: `code`
+            '`' => {
+                // Print accumulated text
+                if !current.is_empty() {
+                    queue!(stdout, Print(&current))?;
+                    current.clear();
+                }
+
+                let mut code_text = String::new();
+
+                // Collect until closing `
+                while let Some(c) = chars.next() {
+                    if c == '`' {
+                        break;
+                    }
+                    code_text.push(c);
+                }
+
+                if !code_text.is_empty() {
+                    queue!(
+                        stdout,
+                        SetForegroundColor(Color::Yellow),
+                        Print(&code_text),
+                        ResetColor
+                    )?;
+                }
+            }
+            _ => {
+                current.push(ch);
+            }
+        }
+    }
+
+    // Print any remaining text
+    if !current.is_empty() {
+        queue!(stdout, Print(&current))?;
+    }
+
+    queue!(stdout, Print("\n"))?;
+    stdout.flush()
 }
 
 #[derive(Debug)]
@@ -313,9 +421,9 @@ impl App {
                     ResetColor
                 )?;
 
-                // Print each line with explicit carriage return
+                // Print each line with markdown rendering
                 for line in wrapped.lines() {
-                    execute!(stdout, Print(format!("\r{}\n", line)))?;
+                    render_markdown_line(stdout, line)?;
                 }
                 execute!(stdout, Print("\r\n"))?;
                 stdout.flush()?;
@@ -469,9 +577,9 @@ impl App {
                         ResetColor
                     )?;
 
-                    // Print each line with explicit carriage return
+                    // Print each line with markdown rendering
                     for line in wrapped.lines() {
-                        execute!(stdout, Print(format!("\r{}\n", line)))?;
+                        render_markdown_line(stdout, line)?;
                     }
                     execute!(stdout, Print("\r\n"))?;
 
@@ -533,6 +641,12 @@ impl App {
             UIUpdate::MenuDisplayRequested => {
                 // Menu display is triggered by Ctrl+M in handle_input, not via UIUpdate
                 // This variant is a no-op for now
+            }
+            UIUpdate::SystemMessage(msg) => {
+                self.clear_input_line(stdout)?;
+                print_colored_line(stdout, &format!("[System] {}", msg), Color::Yellow)?;
+                stdout.flush()?;
+                self.input_needs_render = true;
             }
         }
 
@@ -745,7 +859,7 @@ impl App {
     }
 
     fn render_menu(&self, stdout: &mut impl Write) -> io::Result<()> {
-        self.clear_input_line(stdout)?;
+        execute!(stdout, Clear(ClearType::FromCursorDown))?;
 
         execute!(stdout, Print("\r\n=== Synthia Menu (↑/↓ navigate | Enter select | Esc cancel) ===\n"))?;
 
@@ -789,7 +903,7 @@ impl App {
     }
 
     fn render_reasoning_submenu(&self, stdout: &mut impl Write) -> io::Result<()> {
-        self.clear_input_line(stdout)?;
+        execute!(stdout, Clear(ClearType::FromCursorDown))?;
 
         writeln!(stdout, "\n=== Select Reasoning Level (↑/↓ navigate | Enter select | Esc cancel) ===")?;
 

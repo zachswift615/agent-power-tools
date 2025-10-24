@@ -737,6 +737,29 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
             }
         }
 
+        // Update token count in context manager
+        self.context_manager.update_token_count(
+            token_usage.input_tokens as usize,
+            token_usage.output_tokens as usize,
+        );
+
+        // Check if auto-compaction should trigger
+        if self.context_manager.should_compact() {
+            tracing::info!("Auto-compaction triggered at 80% context usage");
+
+            if let Err(e) = self.context_manager.compact_if_needed().await {
+                tracing::error!("Failed to compact context: {}", e);
+            } else {
+                // Update conversation from compacted context
+                self.conversation = self.context_manager.get_messages().to_vec();
+
+                // Notify UI
+                let _ = self.ui_tx.send(UIUpdate::SystemMessage(
+                    "Context auto-compacted (80% threshold reached)".to_string()
+                )).await;
+            }
+        }
+
         // Log the turn to JSONL
         self.log_turn(&token_usage, stop_reason_opt.as_ref());
 
@@ -922,6 +945,29 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                         self.session.add_message(result_message);
                     }
                 }
+            }
+        }
+
+        // Update token count in context manager
+        self.context_manager.update_token_count(
+            token_usage.input_tokens as usize,
+            token_usage.output_tokens as usize,
+        );
+
+        // Check if auto-compaction should trigger
+        if self.context_manager.should_compact() {
+            tracing::info!("Auto-compaction triggered at 80% context usage");
+
+            if let Err(e) = self.context_manager.compact_if_needed().await {
+                tracing::error!("Failed to compact context: {}", e);
+            } else {
+                // Update conversation from compacted context
+                self.conversation = self.context_manager.get_messages().to_vec();
+
+                // Notify UI
+                let _ = self.ui_tx.send(UIUpdate::SystemMessage(
+                    "Context auto-compacted (80% threshold reached)".to_string()
+                )).await;
             }
         }
 

@@ -46,4 +46,5 @@ pub enum UIUpdate {
         response_tx: tokio::sync::oneshot::Sender<ApprovalResponse>,
     },
     MenuDisplayRequested,  // Signal UI to display menu
+    SystemMessage(String), // System notifications (e.g., auto-compaction)
 }
