@@ -157,6 +157,7 @@ mod tests {
             max_tokens: Some(1000),
             streaming: false,
             reasoning_level: "medium".to_string(),
+            context_window: 8192,
         };
 
         // Create actor (this would normally be done via AgentActor::new, but we'll construct manually for testing)
