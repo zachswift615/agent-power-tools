@@ -1,4 +1,5 @@
 use crate::agent::messages::{Command, UIUpdate};
+use crate::context_manager::TokenStats;
 use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyModifiers},
@@ -288,9 +289,12 @@ pub struct App {
     menu_selected: usize,         // NEW: Selected menu item index
     show_reasoning_submenu: bool, // NEW: Reasoning submenu display flag
     reasoning_submenu_selected: usize, // NEW: Selected reasoning level index
+    show_context_submenu: bool,     // NEW: Context management submenu display flag
+    context_submenu_selected: usize, // NEW: Selected context submenu item index
     show_session_name_input: bool,  // NEW: Session name input modal flag
     session_name_input: String,     // NEW: Separate from main input
     session_name_cursor: usize,     // NEW: Cursor position for session name input
+    token_stats: Option<TokenStats>, // NEW: Token usage stats for header display
 }
 
 impl App {
@@ -314,9 +318,12 @@ impl App {
             menu_selected: 0,         // NEW
             show_reasoning_submenu: false, // NEW
             reasoning_submenu_selected: 1, // NEW: default to "medium" (index 1)
+            show_context_submenu: false,   // NEW
+            context_submenu_selected: 0,   // NEW
             show_session_name_input: false,   // NEW
             session_name_input: String::new(), // NEW
             session_name_cursor: 0,            // NEW
+            token_stats: None,                 // NEW
         }
     }
 
@@ -371,6 +378,7 @@ impl App {
             if !self.show_session_list
                 && !self.show_menu
                 && !self.show_reasoning_submenu
+                && !self.show_context_submenu
                 && !self.show_session_name_input
                 && self.input_needs_render
             {
@@ -396,7 +404,31 @@ impl App {
         queue!(
             stdout,
             SetForegroundColor(Color::Blue),
-            Print("Synthia v0.1.0\n"),
+            Print("╔════════════════════════════════════════════════════════════════╗\n"),
+            Print("║  Synthia v0.1.0                                                ║\n"),
+        )?;
+
+        // Display token stats if available
+        if let Some(stats) = &self.token_stats {
+            let warning = if stats.current >= stats.threshold { " ⚠" } else { "" };
+            let stats_line = format!(
+                "║  Context: {} / {} tokens ({:.0}%){}",
+                stats.current, stats.max, stats.usage_percent, warning
+            );
+            // Pad to 64 chars (including the final ║)
+            let padding = 64_usize.saturating_sub(stats_line.chars().count() + 1);
+            queue!(
+                stdout,
+                Print(&stats_line),
+                Print(" ".repeat(padding)),
+                Print(" ║\n"),
+                Print("╠════════════════════════════════════════════════════════════════╣\n")
+            )?;
+        }
+
+        queue!(
+            stdout,
+            Print("╚════════════════════════════════════════════════════════════════╝\n"),
             ResetColor,
             Print("\n")
         )?;
@@ -648,6 +680,9 @@ impl App {
                 stdout.flush()?;
                 self.input_needs_render = true;
             }
+            UIUpdate::TokenStatsUpdate(stats) => {
+                self.token_stats = Some(stats);
+            }
         }
 
         Ok(())
@@ -868,7 +903,7 @@ impl App {
             "Save Session",
             "New Session",
             "Set Reasoning Level",
-            "Context Management (Coming Soon)",
+            "Context Management",
             "Toggle Mode (Coming Soon)",
         ];
 
@@ -902,6 +937,13 @@ impl App {
         self.render_reasoning_submenu(stdout)
     }
 
+    fn show_context_submenu(&mut self, stdout: &mut impl Write) -> io::Result<()> {
+        self.show_menu = false;
+        self.show_context_submenu = true;
+        self.context_submenu_selected = 0;
+        self.render_context_submenu(stdout)
+    }
+
     fn render_reasoning_submenu(&self, stdout: &mut impl Write) -> io::Result<()> {
         execute!(stdout, Clear(ClearType::FromCursorDown))?;
 
@@ -929,6 +971,64 @@ impl App {
 
         writeln!(stdout)?;
         stdout.flush()
+    }
+
+    fn render_context_submenu(&self, stdout: &mut impl Write) -> io::Result<()> {
+        execute!(stdout, Clear(ClearType::FromCursorDown))?;
+
+        writeln!(stdout, "\n=== Context Management (↑/↓ navigate | Enter select | Esc cancel) ===")?;
+
+        let options = vec![
+            ("View Context Stats", "Display current token usage and limits"),
+            ("Manual Compact", "Trigger context compaction immediately"),
+            ("View Activity Logs", "Show recent context management activity"),
+        ];
+
+        for (idx, (option, desc)) in options.iter().enumerate() {
+            let selected = if idx == self.context_submenu_selected { ">" } else { " " };
+
+            if idx == self.context_submenu_selected {
+                queue!(stdout, SetForegroundColor(Color::Cyan))?;
+            }
+
+            writeln!(stdout, "{} {} - {}", selected, option, desc)?;
+
+            if idx == self.context_submenu_selected {
+                queue!(stdout, ResetColor)?;
+            }
+        }
+
+        writeln!(stdout)?;
+        stdout.flush()
+    }
+
+    async fn handle_context_submenu_selection(&mut self, stdout: &mut impl Write) -> anyhow::Result<()> {
+        match self.context_submenu_selected {
+            0 => {
+                // View Context Stats
+                self.cmd_tx.send(Command::ViewContextStats).await?;
+                self.show_context_submenu = false;
+                execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                self.print_header(stdout)?;
+            }
+            1 => {
+                // Manual Compact
+                self.cmd_tx.send(Command::CompactContext).await?;
+                self.show_context_submenu = false;
+                execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                self.print_header(stdout)?;
+            }
+            2 => {
+                // View Activity Logs (placeholder - not yet implemented)
+                self.show_context_submenu = false;
+                execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                self.print_header(stdout)?;
+                print_colored_line(stdout, "Activity logs feature coming soon!", Color::Yellow)?;
+            }
+            _ => {}
+        }
+
+        Ok(())
     }
 
     fn render_session_name_input(&self, stdout: &mut impl Write) -> io::Result<()> {
@@ -982,8 +1082,12 @@ impl App {
                 // Set Reasoning Level - show submenu
                 self.show_reasoning_submenu(stdout)?;
             }
-            4 | 5 => {
-                // Coming Soon items - do nothing
+            4 => {
+                // Context Management - show submenu
+                self.show_context_submenu(stdout)?;
+            }
+            5 => {
+                // Toggle Mode (Coming Soon) - do nothing
                 self.show_menu = false;
                 execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
                 self.print_header(stdout)?;
@@ -1088,6 +1192,37 @@ impl App {
                 }
                 KeyCode::Esc => {
                     self.show_reasoning_submenu = false;
+                    self.show_menu = true;
+                    self.render_menu(stdout)?;
+                    return Ok(());
+                }
+                _ => return Ok(()),
+            }
+        }
+
+        // Handle context submenu navigation
+        if self.show_context_submenu {
+            match key.code {
+                KeyCode::Up => {
+                    if self.context_submenu_selected > 0 {
+                        self.context_submenu_selected -= 1;
+                        self.render_context_submenu(stdout)?;
+                    }
+                    return Ok(());
+                }
+                KeyCode::Down => {
+                    if self.context_submenu_selected < 2 {  // 3 options (0, 1, 2)
+                        self.context_submenu_selected += 1;
+                        self.render_context_submenu(stdout)?;
+                    }
+                    return Ok(());
+                }
+                KeyCode::Enter => {
+                    self.handle_context_submenu_selection(stdout).await?;
+                    return Ok(());
+                }
+                KeyCode::Esc => {
+                    self.show_context_submenu = false;
                     self.show_menu = true;
                     self.render_menu(stdout)?;
                     return Ok(());

@@ -89,6 +89,7 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
 
         // Initialize context manager with the system prompt
         let mut context_manager = ContextManager::new(llm_provider.clone());
+        context_manager.set_max_token_limit(config.context_window);
         context_manager.add_message(Self::create_system_prompt());
 
         // Detect project and create JSONL logger
@@ -147,6 +148,7 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
 
         // Initialize context manager with session messages
         let mut context_manager = ContextManager::new(llm_provider.clone());
+        context_manager.set_max_token_limit(config.context_window);
         for message in &conversation {
             context_manager.add_message(message.clone());
         }
@@ -335,6 +337,7 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
 
                     // Reset context manager with new system prompt
                     self.context_manager = ContextManager::new(self.llm_provider.clone());
+                    self.context_manager.set_max_token_limit(self.config.context_window);
                     self.context_manager.add_message(Self::create_system_prompt());
 
                     // Tell UI to clear displayed conversation
@@ -359,6 +362,7 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
 
                             // Reinitialize context manager with loaded messages
                             self.context_manager = ContextManager::new(self.llm_provider.clone());
+                            self.context_manager.set_max_token_limit(self.config.context_window);
                             for message in &self.conversation {
                                 self.context_manager.add_message(message.clone());
                             }
@@ -773,6 +777,10 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
             token_usage.output_tokens as usize,
         );
 
+        // Send token stats to UI
+        let stats = self.context_manager.get_token_stats();
+        let _ = self.ui_tx.send(UIUpdate::TokenStatsUpdate(stats)).await;
+
         // Check if auto-compaction should trigger
         if self.context_manager.should_compact() {
             tracing::info!("Auto-compaction triggered at 80% context usage");
@@ -983,6 +991,10 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
             token_usage.input_tokens as usize,
             token_usage.output_tokens as usize,
         );
+
+        // Send token stats to UI
+        let stats = self.context_manager.get_token_stats();
+        let _ = self.ui_tx.send(UIUpdate::TokenStatsUpdate(stats)).await;
 
         // Check if auto-compaction should trigger
         if self.context_manager.should_compact() {

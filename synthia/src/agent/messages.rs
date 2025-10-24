@@ -49,4 +49,5 @@ pub enum UIUpdate {
     },
     MenuDisplayRequested,  // Signal UI to display menu
     SystemMessage(String), // System notifications (e.g., auto-compaction)
+    TokenStatsUpdate(crate::context_manager::TokenStats), // Token usage stats update
 }

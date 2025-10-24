@@ -12,6 +12,7 @@ pub struct GenerationConfig {
     pub model: String,
     pub streaming: bool,
     pub reasoning_level: String,  // "low", "medium", "high"
+    pub context_window: usize,     // Max context window for the model
 }
 
 #[derive(Debug, Clone)]

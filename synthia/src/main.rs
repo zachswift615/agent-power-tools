@@ -74,6 +74,7 @@ async fn main() -> Result<()> {
         max_tokens: config.llm.max_tokens,
         streaming: config.llm.streaming,
         reasoning_level: "medium".to_string(),  // default
+        context_window: config.llm.context_window.unwrap_or(8192),
     };
     let mut agent = AgentActor::new(
         llm_provider,

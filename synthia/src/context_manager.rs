@@ -141,6 +141,7 @@ impl ContextManager {
                     max_tokens: Some(500),
                     streaming: false,
                     reasoning_level: "medium".to_string(),
+                    context_window: 8192, // Default context window
                 },
             )
             .await?;

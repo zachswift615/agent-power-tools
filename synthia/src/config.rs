@@ -45,6 +45,10 @@ pub struct LLMConfig {
     /// Enable streaming for text generation
     #[serde(default = "default_streaming")]
     pub streaming: bool,
+
+    /// Context window size for the model (default: 8192)
+    #[serde(default = "default_context_window")]
+    pub context_window: Option<usize>,
 }
 
 /// Timeout configuration for various tools
@@ -141,6 +145,10 @@ fn default_streaming() -> bool {
     true
 }
 
+fn default_context_window() -> Option<usize> {
+    Some(8192)
+}
+
 impl Default for LLMConfig {
     fn default() -> Self {
         Self {
@@ -150,6 +158,7 @@ impl Default for LLMConfig {
             temperature: default_temperature(),
             max_tokens: default_max_tokens(),
             streaming: default_streaming(),
+            context_window: default_context_window(),
         }
     }
 }
