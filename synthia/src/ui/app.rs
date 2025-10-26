@@ -437,7 +437,10 @@ impl App {
             stdout,
             Print("╚════════════════════════════════════════════════════════════════╝\r\n"),
             ResetColor,
-            Print("\r\n")
+            Print("\r\n"),
+            SetForegroundColor(Color::DarkGrey),
+            Print("💡 Tip: Enter for newline | Ctrl+Enter to send | Ctrl+P for menu\r\n\r\n"),
+            ResetColor
         )?;
         stdout.flush()
     }
@@ -735,28 +738,37 @@ impl App {
 
         self.is_rendering_input = true;
 
-        // IMPORTANT: When input is long and wraps, we need to clear ALL lines it occupies
-        // Calculate how many lines the current input takes
         let (term_width, _) = size()?;
         let prompt_len = 5; // "You: "
-        let total_len = prompt_len + self.input.chars().count();
-        let lines_needed = (total_len + term_width as usize - 1) / term_width as usize;
+
+        // Split input into lines by actual newlines
+        let lines: Vec<&str> = self.input.split('\n').collect();
+
+        // Calculate total screen lines needed (accounting for line wrapping)
+        let mut total_screen_lines = 0;
+        for (idx, line) in lines.iter().enumerate() {
+            let line_len = if idx == 0 {
+                prompt_len + line.chars().count()
+            } else {
+                line.chars().count()
+            };
+            let wrapped_lines = if line_len == 0 { 1 } else { (line_len + term_width as usize - 1) / term_width as usize };
+            total_screen_lines += wrapped_lines;
+        }
 
         // Get current cursor position
         let (_, mut cursor_y) = cursor::position()?;
 
-        // Clear all lines that the input currently occupies
-        // Move cursor up to the start of the input
-        if lines_needed > 1 {
-            // If we're on a wrapped line, we need to move up to clear from the start
-            let lines_to_move_up = lines_needed.saturating_sub(1);
+        // Move up to the start of the input if needed
+        if total_screen_lines > 1 {
+            let lines_to_move_up = total_screen_lines.saturating_sub(1);
             if lines_to_move_up > 0 && cursor_y >= lines_to_move_up as u16 {
                 cursor_y -= lines_to_move_up as u16;
                 queue!(stdout, cursor::MoveTo(0, cursor_y))?;
             }
         }
 
-        // Clear from current position to end of screen (clears all wrapped lines)
+        // Clear from current position to end of screen
         queue!(
             stdout,
             cursor::MoveTo(0, cursor_y),
@@ -764,19 +776,64 @@ impl App {
         )?;
         stdout.flush()?;
 
-        // Print prompt and input
+        // Print prompt and first line
         queue!(
             stdout,
             SetForegroundColor(Color::Green),
             Print("You: "),
             ResetColor,
-            Print(&self.input),
+            Print(lines[0]),
         )?;
 
-        // Calculate and move to correct cursor position
-        let cursor_x = (prompt_len + self.cursor_position) % term_width as usize;
-        let cursor_line_offset = (prompt_len + self.cursor_position) / term_width as usize;
-        let final_cursor_y = cursor_y + cursor_line_offset as u16;
+        // Print remaining lines (if any)
+        for line in &lines[1..] {
+            queue!(stdout, Print("\r\n"), Print(line))?;
+        }
+
+        // Calculate cursor position
+        // Find which line the cursor is on
+        let mut chars_remaining = self.cursor_position;
+        let mut current_line_idx = 0;
+        let mut cursor_col_in_line = 0;
+
+        for (idx, line) in lines.iter().enumerate() {
+            let line_chars = line.chars().count();
+            if chars_remaining <= line_chars {
+                current_line_idx = idx;
+                cursor_col_in_line = chars_remaining;
+                break;
+            }
+            // +1 for the newline character
+            chars_remaining = chars_remaining.saturating_sub(line_chars + 1);
+        }
+
+        // Calculate screen position for cursor
+        let cursor_x = if current_line_idx == 0 {
+            (prompt_len + cursor_col_in_line) % term_width as usize
+        } else {
+            cursor_col_in_line % term_width as usize
+        };
+
+        // Count screen lines before cursor line
+        let mut screen_lines_before = 0;
+        for (idx, line) in lines[..current_line_idx].iter().enumerate() {
+            let line_len = if idx == 0 {
+                prompt_len + line.chars().count()
+            } else {
+                line.chars().count()
+            };
+            screen_lines_before += if line_len == 0 { 1 } else { (line_len + term_width as usize - 1) / term_width as usize };
+        }
+
+        // Add wrapped lines within current line
+        let chars_before_cursor_in_line = if current_line_idx == 0 {
+            prompt_len + cursor_col_in_line
+        } else {
+            cursor_col_in_line
+        };
+        let wrapped_lines_in_current = chars_before_cursor_in_line / term_width as usize;
+
+        let final_cursor_y = cursor_y + screen_lines_before as u16 + wrapped_lines_in_current as u16;
 
         queue!(stdout, cursor::MoveTo(cursor_x as u16, final_cursor_y))?;
 
@@ -1431,7 +1488,8 @@ impl App {
                 tracing::info!("Menu rendered, show_menu={}", self.show_menu);
                 return Ok(());
             }
-            (KeyCode::Enter, _) => {
+            (KeyCode::Enter, KeyModifiers::CONTROL) => {
+                // Ctrl+Enter sends the message
                 if !self.input.is_empty() {
                     let msg = self.input.clone();
 
@@ -1452,6 +1510,12 @@ impl App {
                     self.input.clear();
                     self.cursor_position = 0;
                 }
+            }
+            (KeyCode::Enter, _) => {
+                // Plain Enter inserts a newline for multi-line input
+                self.input.insert(self.cursor_position, '\n');
+                self.cursor_position += 1;
+                self.input_needs_render = true;
             }
             (KeyCode::Left, _) => {
                 if self.cursor_position > 0 {
