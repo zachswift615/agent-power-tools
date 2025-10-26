@@ -439,7 +439,7 @@ impl App {
             ResetColor,
             Print("\r\n"),
             SetForegroundColor(Color::DarkGrey),
-            Print("💡 Tip: Enter for newline | Ctrl+Enter to send | Ctrl+P for menu\r\n\r\n"),
+            Print("💡 Tip: Enter for newline | Shift+Enter to send | Ctrl+P for menu\r\n\r\n"),
             ResetColor
         )?;
         stdout.flush()
@@ -1488,8 +1488,8 @@ impl App {
                 tracing::info!("Menu rendered, show_menu={}", self.show_menu);
                 return Ok(());
             }
-            (KeyCode::Enter, KeyModifiers::CONTROL) => {
-                // Ctrl+Enter sends the message
+            (KeyCode::Enter, KeyModifiers::SHIFT) | (KeyCode::Enter, KeyModifiers::CONTROL) => {
+                // Shift+Enter or Ctrl+Enter sends the message
                 if !self.input.is_empty() {
                     let msg = self.input.clone();
 
