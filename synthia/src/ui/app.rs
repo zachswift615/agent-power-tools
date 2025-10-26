@@ -1208,6 +1208,15 @@ impl App {
     async fn handle_input(&mut self, stdout: &mut impl Write, key: event::KeyEvent) -> anyhow::Result<()> {
         tracing::debug!("Key event: {:?} with modifiers: {:?}", key.code, key.modifiers);
 
+        // Special logging for Enter key to debug send issue
+        if matches!(key.code, KeyCode::Enter) {
+            tracing::info!("ENTER KEY PRESSED - code: {:?}, modifiers: {:?}, contains SHIFT: {}, contains CONTROL: {}",
+                key.code, key.modifiers,
+                key.modifiers.contains(KeyModifiers::SHIFT),
+                key.modifiers.contains(KeyModifiers::CONTROL)
+            );
+        }
+
         // Handle edit approval input
         if let Some(approval_state) = self.pending_edit_approval.take() {
             match (key.code, key.modifiers) {
@@ -1488,34 +1497,36 @@ impl App {
                 tracing::info!("Menu rendered, show_menu={}", self.show_menu);
                 return Ok(());
             }
-            (KeyCode::Enter, KeyModifiers::SHIFT) | (KeyCode::Enter, KeyModifiers::CONTROL) => {
-                // Shift+Enter or Ctrl+Enter sends the message
-                if !self.input.is_empty() {
-                    let msg = self.input.clone();
+            (KeyCode::Enter, modifiers) => {
+                // Check if SHIFT or CONTROL modifier is pressed
+                if modifiers.contains(KeyModifiers::SHIFT) || modifiers.contains(KeyModifiers::CONTROL) {
+                    // Shift+Enter or Ctrl+Enter sends the message
+                    if !self.input.is_empty() {
+                        let msg = self.input.clone();
 
-                    // Clear input line and print user message
-                    self.clear_input_line(stdout)?;
-                    queue!(
-                        stdout,
-                        SetForegroundColor(Color::Green),
-                        Print("You: "),
-                        ResetColor
-                    )?;
-                    let sanitized = sanitize_text(&msg);
-                    writeln!(stdout, "{}", sanitized)?;
-                    writeln!(stdout)?;
-                    stdout.flush()?;
+                        // Clear input line and print user message
+                        self.clear_input_line(stdout)?;
+                        queue!(
+                            stdout,
+                            SetForegroundColor(Color::Green),
+                            Print("You: "),
+                            ResetColor
+                        )?;
+                        let sanitized = sanitize_text(&msg);
+                        writeln!(stdout, "{}", sanitized)?;
+                        writeln!(stdout)?;
+                        stdout.flush()?;
 
-                    self.cmd_tx.send(Command::SendMessage(msg)).await?;
-                    self.input.clear();
-                    self.cursor_position = 0;
+                        self.cmd_tx.send(Command::SendMessage(msg)).await?;
+                        self.input.clear();
+                        self.cursor_position = 0;
+                    }
+                } else {
+                    // Plain Enter inserts a newline for multi-line input
+                    self.input.insert(self.cursor_position, '\n');
+                    self.cursor_position += 1;
+                    self.input_needs_render = true;
                 }
-            }
-            (KeyCode::Enter, _) => {
-                // Plain Enter inserts a newline for multi-line input
-                self.input.insert(self.cursor_position, '\n');
-                self.cursor_position += 1;
-                self.input_needs_render = true;
             }
             (KeyCode::Left, _) => {
                 if self.cursor_position > 0 {
