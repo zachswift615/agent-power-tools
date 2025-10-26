@@ -169,7 +169,7 @@ mod tests {
 
         // Spawn actor in background
         let registry_arc = Arc::new(registry);
-        let mut actor = AgentActor::new(llm, registry_arc, config, ui_tx, cmd_rx);
+        let mut actor = AgentActor::new(llm, registry_arc, config, ui_tx, cmd_rx, None);
 
         // Measure execution time
         let start = std::time::Instant::now();
