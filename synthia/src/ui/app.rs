@@ -627,6 +627,26 @@ impl App {
                     stdout.flush()?;
                     self.input_needs_render = true;
                 }
+
+                // Display token usage stats after turn completes
+                if let Some(stats) = &self.token_stats {
+                    let color = if stats.current >= stats.threshold {
+                        Color::Red
+                    } else if stats.usage_percent > 60.0 {
+                        Color::Yellow
+                    } else {
+                        Color::DarkGrey
+                    };
+
+                    execute!(
+                        stdout,
+                        SetForegroundColor(color),
+                        Print(format!("  [Context: {}/{} tokens ({:.0}%)]\r\n",
+                            stats.current, stats.max, stats.usage_percent)),
+                        ResetColor
+                    )?;
+                    stdout.flush()?;
+                }
             }
             UIUpdate::SessionSaved { session_id } => {
                 self.current_session_id = Some(session_id.clone());
@@ -689,6 +709,8 @@ impl App {
             }
             UIUpdate::TokenStatsUpdate(stats) => {
                 self.token_stats = Some(stats);
+                // Don't update header here - just store the stats
+                // The header will show updated stats on next screen clear or session event
             }
         }
 
@@ -770,7 +792,7 @@ impl App {
     fn render_session_list(&self, stdout: &mut impl Write) -> io::Result<()> {
         self.clear_input_line(stdout)?;
 
-        writeln!(stdout, "\n=== Load Session (↑/↓ navigate | Enter select | Esc cancel) ===")?;
+        write!(stdout, "\r\n=== Load Session (↑/↓ navigate | Enter select | Esc cancel) ===\r\n")?;
 
         for (idx, session) in self.session_list.iter().enumerate() {
             let selected = if idx == self.session_list_selected { ">" } else { " " };
@@ -779,7 +801,7 @@ impl App {
                 .unwrap_or_else(|| "Unknown".to_string());
 
             if idx == self.session_list_selected {
-                queue!(stdout, SetForegroundColor(Color::Cyan))?;
+                write!(stdout, "{}", SetForegroundColor(Color::Cyan))?;
             }
 
             // Display session name if available, otherwise just show ID
@@ -787,9 +809,9 @@ impl App {
                 .map(|n| format!("{} ({})", n, &session.id[..session.id.len().min(10)]))
                 .unwrap_or_else(|| session.id[..session.id.len().min(30)].to_string());
 
-            writeln!(
+            write!(
                 stdout,
-                "{} {} - {} msgs - {}",
+                "{} {} - {} msgs - {}\r\n",
                 selected,
                 timestamp,
                 session.message_count,
@@ -797,11 +819,11 @@ impl App {
             )?;
 
             if idx == self.session_list_selected {
-                queue!(stdout, ResetColor)?;
+                write!(stdout, "{}", ResetColor)?;
             }
         }
 
-        writeln!(stdout)?;
+        write!(stdout, "\r\n")?;
         stdout.flush()
     }
 
@@ -908,6 +930,7 @@ impl App {
         let menu_items = vec![
             "Set Session Name",
             "Save Session",
+            "Load Session",
             "New Session",
             "Set Reasoning Level",
             "Context Management",
@@ -983,7 +1006,7 @@ impl App {
     fn render_context_submenu(&self, stdout: &mut impl Write) -> io::Result<()> {
         execute!(stdout, Clear(ClearType::FromCursorDown))?;
 
-        writeln!(stdout, "\n=== Context Management (↑/↓ navigate | Enter select | Esc cancel) ===")?;
+        write!(stdout, "\r\n=== Context Management (↑/↓ navigate | Enter select | Esc cancel) ===\r\n")?;
 
         let options = vec![
             ("View Context Stats", "Display current token usage and limits"),
@@ -995,17 +1018,17 @@ impl App {
             let selected = if idx == self.context_submenu_selected { ">" } else { " " };
 
             if idx == self.context_submenu_selected {
-                queue!(stdout, SetForegroundColor(Color::Cyan))?;
+                write!(stdout, "{}", SetForegroundColor(Color::Cyan))?;
             }
 
-            writeln!(stdout, "{} {} - {}", selected, option, desc)?;
+            write!(stdout, "{} {} - {}\r\n", selected, option, desc)?;
 
             if idx == self.context_submenu_selected {
-                queue!(stdout, ResetColor)?;
+                write!(stdout, "{}", ResetColor)?;
             }
         }
 
-        writeln!(stdout)?;
+        write!(stdout, "\r\n")?;
         stdout.flush()
     }
 
@@ -1092,21 +1115,28 @@ impl App {
                 self.print_header(stdout)?;
             }
             2 => {
+                // Load Session - show session list
+                self.cmd_tx.send(Command::ListSessions).await?;
+                self.show_menu = false;
+                execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                self.print_header(stdout)?;
+            }
+            3 => {
                 // New Session
                 self.cmd_tx.send(Command::NewSession).await?;
                 self.show_menu = false;
                 execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
                 self.print_header(stdout)?;
             }
-            3 => {
+            4 => {
                 // Set Reasoning Level - show submenu
                 self.show_reasoning_submenu(stdout)?;
             }
-            4 => {
+            5 => {
                 // Context Management - show submenu
                 self.show_context_submenu(stdout)?;
             }
-            5 => {
+            6 => {
                 // Toggle Mode (Coming Soon) - do nothing
                 self.show_menu = false;
                 execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
