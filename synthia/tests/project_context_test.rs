@@ -1,8 +1,9 @@
 use std::fs;
-use std::path::PathBuf;
 use tempfile::TempDir;
+use serial_test::serial;
 
 #[test]
+#[serial]
 fn test_load_creates_synthia_directory() {
     let temp_dir = TempDir::new().unwrap();
     let original_dir = std::env::current_dir().unwrap();
@@ -20,6 +21,7 @@ fn test_load_creates_synthia_directory() {
 }
 
 #[test]
+#[serial]
 fn test_load_creates_empty_synthia_md() {
     let temp_dir = TempDir::new().unwrap();
     let original_dir = std::env::current_dir().unwrap();
@@ -38,6 +40,7 @@ fn test_load_creates_empty_synthia_md() {
 }
 
 #[test]
+#[serial]
 fn test_load_reads_existing_content() {
     let temp_dir = TempDir::new().unwrap();
     let original_dir = std::env::current_dir().unwrap();
@@ -59,6 +62,7 @@ fn test_load_reads_existing_content() {
 }
 
 #[test]
+#[serial]
 fn test_empty_file_returns_none() {
     let temp_dir = TempDir::new().unwrap();
     let original_dir = std::env::current_dir().unwrap();

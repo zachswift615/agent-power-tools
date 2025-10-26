@@ -2,8 +2,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{warn, info};
 
+/// Project-specific context loaded from .synthia/ directory.
+///
+/// This struct provides access to project-specific instructions and configuration
+/// that customize Synthia's behavior for a particular project.
 pub struct ProjectContext {
+    /// Custom instructions from .synthia/.SYNTHIA.md (trimmed, None if empty)
     pub custom_instructions: Option<String>,
+    /// Path to the .synthia/ directory
     pub synthia_dir: PathBuf,
 }
 
@@ -56,7 +62,7 @@ impl ProjectContext {
         if trimmed.is_empty() {
             Ok(None)
         } else {
-            Ok(Some(content))
+            Ok(Some(trimmed.to_string()))
         }
     }
 }
