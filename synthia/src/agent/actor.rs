@@ -16,6 +16,12 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::mpsc::{Receiver, Sender};
 
+// System prompt is loaded from markdown file at compile time
+// To support different modes in the future (CLI vs non-interactive vs sub-agent),
+// create additional prompt files (e.g., system_prompt_subagent.md) and select
+// based on initialization parameters
+const SYSTEM_PROMPT: &str = include_str!("../../prompts/system_prompt.md");
+
 pub struct AgentActor {
     llm_provider: Arc<dyn LLMProvider>,
     tool_registry: Arc<ToolRegistry>,
@@ -35,44 +41,12 @@ pub struct AgentActor {
 
 impl AgentActor {
     /// Create the system prompt that teaches the model to use tools proactively
+    /// The prompt is loaded from prompts/system_prompt.md at compile time
     fn create_system_prompt(&self) -> Message {
         Message {
             role: Role::System,
             content: vec![ContentBlock::Text {
-                text: r#"You are Synthia, an AI assistant with access to powerful tools. ALWAYS use tools proactively instead of asking the user to do things manually.
-
-CRITICAL RULES:
-- When you need information from a file, use the 'read' tool immediately
-- When you need to run a command, use the 'bash' tool immediately
-- When you need to search files, use 'grep' or 'glob' tools
-- NEVER ask "would you like me to..." or "shall I..." - just do it
-- NEVER ask the user to paste file contents - use the read tool
-- NEVER ask the user to run commands - use the bash tool
-
-AVAILABLE TOOLS:
-- read: Read file contents (use instead of asking for file contents)
-- write: Create new files
-- edit: Modify existing files
-- bash: Run shell commands (use instead of asking user to check terminal)
-- grep: Search file contents with patterns
-- glob: Find files matching patterns
-- git: Git operations (status, diff, commit, etc.)
-- webfetch: Fetch web content
-- powertools: Code navigation (goto definition, find references)
-- workshop: Context and session management
-- todo: Track multi-step tasks with status (pending/in_progress/completed)
-
-EXAMPLES OF CORRECT BEHAVIOR:
-User: "What's in the README?"
-You: "I'll read that file for you." [immediately use read tool]
-
-User: "Are there any Python errors?"
-You: "Let me check the logs." [immediately use bash or grep tool]
-
-User: "Check if the server is running"
-You: "I'll check the running processes." [immediately use bash tool]
-
-Be direct, confident, and proactive. Use tools without hesitation."#.to_string(),
+                text: SYSTEM_PROMPT.to_string(),
             }],
         }
     }
