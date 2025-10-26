@@ -102,7 +102,7 @@ fn default_api_base() -> String {
 }
 
 fn default_model() -> String {
-    "zachswift615/synthia-coder".to_string()
+    "google/gemma-3-12b".to_string()
 }
 
 fn default_temperature() -> f32 {
@@ -285,7 +285,7 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
         assert_eq!(config.llm.api_base, "http://localhost:1234/v1");
-        assert_eq!(config.llm.model, "zachswift615/synthia-coder");
+        assert_eq!(config.llm.model, "google/gemma-3-12b");
         assert_eq!(config.llm.temperature, 0.7);
         assert_eq!(config.llm.max_tokens, Some(4096));
         assert_eq!(config.timeouts.bash_timeout, 300);
@@ -341,7 +341,7 @@ mod tests {
         let contents = fs::read_to_string(&config_path).unwrap();
         let config: Config = toml::from_str(&contents).unwrap();
 
-        assert_eq!(config.llm.model, "zachswift615/synthia-coder");
+        assert_eq!(config.llm.model, "google/gemma-3-12b");
     }
 
     #[test]
@@ -361,7 +361,7 @@ mod tests {
         let config = Config::load().unwrap();
 
         // Should have default values
-        assert_eq!(config.llm.model, "zachswift615/synthia-coder");
+        assert_eq!(config.llm.model, "google/gemma-3-12b");
     }
 
     #[test]

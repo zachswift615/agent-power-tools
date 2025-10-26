@@ -31,10 +31,19 @@ impl GlobTool {
         cmd.arg("-type").arg("f");
 
         // Convert glob pattern to find-compatible pattern
-        if pattern.contains('*') {
-            cmd.arg("-name").arg(pattern);
+        // Strip **/ prefix since find is recursive by default
+        let find_pattern = if let Some(stripped) = pattern.strip_prefix("**/") {
+            stripped.to_string()  // "**/*.rs" → "*.rs"
+        } else if pattern == "**/*" || pattern == "**" {
+            "*".to_string()  // "**/*" → "*" (match all files)
         } else {
-            cmd.arg("-name").arg(format!("*{}*", pattern));
+            pattern.to_string()  // No change for simple patterns
+        };
+
+        if find_pattern.contains('*') {
+            cmd.arg("-name").arg(find_pattern);
+        } else {
+            cmd.arg("-name").arg(format!("*{}*", find_pattern));
         }
 
         cmd.stdout(Stdio::piped());
@@ -110,8 +119,11 @@ impl Tool for GlobTool {
             });
         }
 
+        // Prepend search context for clarity
+        let output = format!("Pattern: {}\nPath: {}\n\n{}", pattern, path, stdout);
+
         Ok(ToolResult {
-            content: stdout.to_string(),
+            content: output,
             is_error: false,
         })
     }
@@ -206,6 +218,72 @@ mod tests {
         assert!(result.content.contains("foo.rs"));
         assert!(result.content.contains("bar.rs"));
         assert!(!result.content.contains("baz.txt"));
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_glob_recursive_all_pattern() {
+        // Test the **/* pattern which should match all files recursively
+        let temp_dir = "/tmp/synthia_glob_test_recursive_all";
+        fs::create_dir_all(format!("{}/subdir", temp_dir))
+            .await
+            .unwrap();
+        fs::write(format!("{}/file1.txt", temp_dir), "content")
+            .await
+            .unwrap();
+        fs::write(format!("{}/subdir/file2.txt", temp_dir), "content")
+            .await
+            .unwrap();
+
+        let tool = GlobTool::new();
+        let result = tool
+            .execute(serde_json::json!({
+                "pattern": "**/*",
+                "path": temp_dir
+            }))
+            .await
+            .unwrap();
+
+        assert!(!result.is_error);
+        assert!(result.content.contains("file1.txt"));
+        assert!(result.content.contains("file2.txt"));
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_glob_recursive_extension_pattern() {
+        // Test the **/*.rs pattern which should match all .rs files recursively
+        let temp_dir = "/tmp/synthia_glob_test_recursive_ext";
+        fs::create_dir_all(format!("{}/src", temp_dir))
+            .await
+            .unwrap();
+        fs::write(format!("{}/main.rs", temp_dir), "content")
+            .await
+            .unwrap();
+        fs::write(format!("{}/src/lib.rs", temp_dir), "content")
+            .await
+            .unwrap();
+        fs::write(format!("{}/README.md", temp_dir), "content")
+            .await
+            .unwrap();
+
+        let tool = GlobTool::new();
+        let result = tool
+            .execute(serde_json::json!({
+                "pattern": "**/*.rs",
+                "path": temp_dir
+            }))
+            .await
+            .unwrap();
+
+        assert!(!result.is_error);
+        assert!(result.content.contains("main.rs"));
+        assert!(result.content.contains("lib.rs"));
+        assert!(!result.content.contains("README.md"));
 
         // Cleanup
         fs::remove_dir_all(temp_dir).await.unwrap();

@@ -55,8 +55,11 @@ impl Tool for ReadTool {
             Err(e) => return Err(e.into()),
         };
 
+        // Prepend file path to content for clarity
+        let output = format!("File: {}\n\n{}", path.display(), content);
+
         Ok(ToolResult {
-            content,
+            content: output,
             is_error: false,
         })
     }
@@ -82,7 +85,8 @@ mod tests {
             .unwrap();
 
         assert!(!result.is_error);
-        assert_eq!(result.content, "test content");
+        assert!(result.content.starts_with("File: /tmp/synthia_test_read.txt"));
+        assert!(result.content.contains("test content"));
 
         // Cleanup
         fs::remove_file(temp_path).await.unwrap();

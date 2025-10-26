@@ -23,7 +23,7 @@ api_base = "http://localhost:1234/v1"
 # Model name to use
 # For local models: use the model name as shown in LM Studio
 # For OpenAI: "gpt-4", "gpt-3.5-turbo", etc.
-model = "openai/gpt-oss-20b"
+model = "google/gemma-3-12b"
 
 # Temperature for generation (0.0 to 1.0)
 # Lower values = more focused and deterministic

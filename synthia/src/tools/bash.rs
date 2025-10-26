@@ -78,10 +78,11 @@ impl Tool for BashTool {
         let stdout = String::from_utf8_lossy(&result.stdout);
         let stderr = String::from_utf8_lossy(&result.stderr);
 
+        // Prepend command for clarity
         let content = if !stderr.is_empty() {
-            format!("stdout:\n{}\nstderr:\n{}", stdout, stderr)
+            format!("Command: {}\n\nstdout:\n{}\nstderr:\n{}", command, stdout, stderr)
         } else {
-            stdout.to_string()
+            format!("Command: {}\n\n{}", command, stdout)
         };
 
         Ok(ToolResult {
