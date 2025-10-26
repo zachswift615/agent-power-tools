@@ -59,6 +59,7 @@ AVAILABLE TOOLS:
 - webfetch: Fetch web content
 - powertools: Code navigation (goto definition, find references)
 - workshop: Context and session management
+- todo: Track multi-step tasks with status (pending/in_progress/completed)
 
 EXAMPLES OF CORRECT BEHAVIOR:
 User: "What's in the README?"

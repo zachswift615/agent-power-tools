@@ -8,6 +8,7 @@ pub mod grep;
 pub mod powertools;
 pub mod read;
 pub mod registry;
+pub mod todo;
 pub mod webfetch;
 pub mod workshop;
 pub mod write;

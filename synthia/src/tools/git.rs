@@ -8,6 +8,7 @@ use tokio::time::timeout;
 
 /// Git tool that provides common git operations by shelling out to git commands.
 /// Each operation is specified via the "operation" parameter:
+/// - init: Initialize a new git repository
 /// - status: Check working tree status
 /// - diff: Show changes (optional: staged, unstaged, or both)
 /// - log: Show commit history (configurable limit)
@@ -36,10 +37,12 @@ impl GitTool {
         let stdout = String::from_utf8_lossy(&result.stdout);
         let stderr = String::from_utf8_lossy(&result.stderr);
 
+        // Prepend command for clarity
+        let command_str = format!("git {}", args.join(" "));
         let content = if !stderr.is_empty() {
-            format!("stdout:\n{}\nstderr:\n{}", stdout, stderr)
+            format!("Command: {}\n\nstdout:\n{}\nstderr:\n{}", command_str, stdout, stderr)
         } else {
-            stdout.to_string()
+            format!("Command: {}\n\n{}", command_str, stdout)
         };
 
         Ok(ToolResult {
@@ -105,6 +108,10 @@ impl GitTool {
 
         self.run_git_command(&args, cwd).await
     }
+
+    async fn git_init(&self, cwd: Option<&str>) -> Result<ToolResult> {
+        self.run_git_command(&["init"], cwd).await
+    }
 }
 
 #[async_trait]
@@ -114,7 +121,7 @@ impl Tool for GitTool {
     }
 
     fn description(&self) -> &str {
-        "Execute git operations (status, diff, log, add, commit, push)"
+        "Execute git operations (init, status, diff, log, add, commit, push)"
     }
 
     fn parameters_schema(&self) -> Value {
@@ -124,7 +131,7 @@ impl Tool for GitTool {
                 "operation": {
                     "type": "string",
                     "description": "Git operation to perform",
-                    "enum": ["status", "diff", "log", "add", "commit", "push"]
+                    "enum": ["init", "status", "diff", "log", "add", "commit", "push"]
                 },
                 "cwd": {
                     "type": "string",
@@ -170,6 +177,7 @@ impl Tool for GitTool {
         let cwd = params["cwd"].as_str();
 
         match operation {
+            "init" => self.git_init(cwd).await,
             "status" => self.git_status(cwd).await,
             "diff" => {
                 let staged = params["staged"].as_bool().unwrap_or(false);
@@ -623,5 +631,49 @@ mod tests {
         );
 
         cleanup_test_repo(&repo_dir).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_git_init() {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let temp_dir = std::env::temp_dir()
+            .join(format!("synthia_git_init_test_{}_{}", std::process::id(), timestamp));
+
+        // Create directory without initializing git
+        if temp_dir.exists() {
+            fs::remove_dir_all(&temp_dir).unwrap();
+        }
+        fs::create_dir(&temp_dir).unwrap();
+
+        let tool = GitTool::new(5);
+
+        // Initialize git repository
+        let result = tool
+            .execute(serde_json::json!({
+                "operation": "init",
+                "cwd": temp_dir.to_str().unwrap()
+            }))
+            .await
+            .unwrap();
+
+        assert!(!result.is_error);
+        assert!(result.content.contains("Initialized") || result.content.contains("init"));
+
+        // Verify it's a git repository by running git status
+        let status_result = tool
+            .execute(serde_json::json!({
+                "operation": "status",
+                "cwd": temp_dir.to_str().unwrap()
+            }))
+            .await
+            .unwrap();
+
+        assert!(!status_result.is_error);
+        assert!(status_result.content.contains("On branch") || status_result.content.contains("No commits yet"));
+
+        cleanup_test_repo(&temp_dir).await.unwrap();
     }
 }

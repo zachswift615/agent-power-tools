@@ -17,7 +17,7 @@ use std::sync::Arc;
 use tools::{
     bash::BashTool, edit::EditTool, git::GitTool, glob::GlobTool, grep::GrepTool,
     powertools::PowertoolsTool, read::ReadTool, registry::ToolRegistry,
-    webfetch::WebFetchTool, workshop::WorkshopTool, write::WriteTool,
+    todo::TodoTool, webfetch::WebFetchTool, workshop::WorkshopTool, write::WriteTool,
 };
 use tokio::sync::mpsc;
 use ui::App;
@@ -58,6 +58,7 @@ async fn main() -> Result<()> {
     tool_registry.register(Arc::new(GitTool::new(config.timeouts.git_timeout)))?;
     tool_registry.register(Arc::new(PowertoolsTool::new(config.tools.powertools_binary_path.clone())?))?;
     tool_registry.register(Arc::new(WorkshopTool::new(config.timeouts.workshop_timeout)))?;
+    tool_registry.register(Arc::new(TodoTool::new()))?;
 
     // Create channels
     let (cmd_tx, cmd_rx) = mpsc::channel::<Command>(100);
