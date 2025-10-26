@@ -14,6 +14,7 @@ Synthia is a powerful terminal-based AI assistant that brings Claude Code's capa
 - **🎨 Clean TUI** - Mouse and keyboard scrolling, intuitive controls
 - **🔌 OpenAI-Compatible** - Works with LM Studio, Ollama, OpenAI, and more
 - **✅ Edit Approval with Diff Preview** - Review all file edits before they execute, with syntax-highlighted diffs
+- **Project-Specific Instructions:** Customize Synthia's behavior per-project via `.synthia/.SYNTHIA.md`
 
 ## Quick Start
 
@@ -248,6 +249,27 @@ synthia/
 - [ ] Cloud provider integration
 - [ ] Conversation search
 - [ ] Tool usage analytics
+
+## Project-Specific Instructions
+
+Synthia supports project-level custom instructions via `.synthia/.SYNTHIA.md`. This allows you to:
+
+- Define project-specific conventions and guidelines
+- Provide context about your codebase
+- Customize Synthia's behavior for different projects
+
+See [.SYNTHIA.md Guide](docs/SYNTHIA_MD_GUIDE.md) for details.
+
+Quick example:
+
+```bash
+# Synthia auto-creates .synthia/.SYNTHIA.md on startup
+# Add your custom instructions:
+echo "You are helping with a FastAPI project. Follow PEP 8." > .synthia/.SYNTHIA.md
+
+# Restart Synthia to load the instructions
+synthia
+```
 
 ## Contributing
 

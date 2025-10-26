@@ -4,12 +4,14 @@ mod context_manager;
 mod jsonl_logger;
 mod llm;
 mod project;
+mod project_context;
 mod session;
 mod tools;
 mod types;
 mod ui;
 
 use agent::{messages::Command, messages::UIUpdate, AgentActor};
+use project_context::ProjectContext;
 use anyhow::Result;
 use config::Config;
 use llm::{openai::OpenAICompatibleProvider, GenerationConfig};
@@ -39,6 +41,12 @@ async fn main() -> Result<()> {
     // Load configuration
     let config = Config::load()?;
     tracing::info!("Configuration loaded successfully");
+
+    // Load project context
+    let project_context = ProjectContext::load();
+    if let Some(ref instructions) = project_context.custom_instructions {
+        tracing::info!("Loaded project-specific instructions from .synthia/.SYNTHIA.md ({} bytes)", instructions.len());
+    }
 
     // Create LLM provider
     let llm_provider = Arc::new(OpenAICompatibleProvider::new(
@@ -83,6 +91,7 @@ async fn main() -> Result<()> {
         gen_config,
         ui_tx,
         cmd_rx,
+        project_context.custom_instructions,
     );
 
     // Spawn agent actor

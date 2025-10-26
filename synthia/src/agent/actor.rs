@@ -20,6 +20,7 @@ pub struct AgentActor {
     llm_provider: Arc<dyn LLMProvider>,
     tool_registry: Arc<ToolRegistry>,
     conversation: Vec<Message>,
+    project_context: Option<String>,
     context_manager: ContextManager,
     config: GenerationConfig,
     ui_tx: Sender<UIUpdate>,
@@ -34,7 +35,7 @@ pub struct AgentActor {
 
 impl AgentActor {
     /// Create the system prompt that teaches the model to use tools proactively
-    fn create_system_prompt() -> Message {
+    fn create_system_prompt(&self) -> Message {
         Message {
             role: Role::System,
             content: vec![ContentBlock::Text {
@@ -76,22 +77,56 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
         }
     }
 
+    fn create_project_context_message(&self) -> Option<Message> {
+        self.project_context.as_ref().map(|content| {
+            Message {
+                role: Role::System,
+                content: vec![ContentBlock::Text {
+                    text: format!("<project-instructions>\n{}\n</project-instructions>", content),
+                }],
+            }
+        })
+    }
+
     pub fn new(
         llm_provider: Arc<dyn LLMProvider>,
         tool_registry: Arc<ToolRegistry>,
         config: GenerationConfig,
         ui_tx: Sender<UIUpdate>,
         cmd_rx: Receiver<Command>,
+        project_context: Option<String>,
     ) -> Self {
         let session = Session::new(config.model.clone());
 
-        // Start with system prompt
-        let conversation = vec![Self::create_system_prompt()];
+        // Create temporary instance to call instance methods
+        let mut temp_actor = Self {
+            llm_provider: llm_provider.clone(),
+            tool_registry: tool_registry.clone(),
+            conversation: Vec::new(),
+            project_context: project_context.clone(),
+            context_manager: ContextManager::new(llm_provider.clone()),
+            config: config.clone(),
+            ui_tx: ui_tx.clone(),
+            cmd_rx,
+            session,
+            auto_save: true,
+            cancel_requested: false,
+            tool_call_count: 0,
+            json_parser: JsonParser::new(),
+            jsonl_logger: JsonlLogger::new("temp").unwrap(),
+        };
 
-        // Initialize context manager with the system prompt
-        let mut context_manager = ContextManager::new(llm_provider.clone());
-        context_manager.set_max_token_limit(config.context_window);
-        context_manager.add_message(Self::create_system_prompt());
+        // Build conversation with system messages
+        temp_actor.conversation.push(temp_actor.create_system_prompt());
+        if let Some(project_msg) = temp_actor.create_project_context_message() {
+            temp_actor.conversation.push(project_msg);
+        }
+
+        // Initialize context manager with system messages
+        temp_actor.context_manager.set_max_token_limit(config.context_window);
+        for msg in &temp_actor.conversation {
+            temp_actor.context_manager.add_message(msg.clone());
+        }
 
         // Detect project and create JSONL logger
         let project_name = detect_project_root()
@@ -111,21 +146,8 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
 
         tracing::info!("Initialized JSONL logger for project: {}", project_name);
 
-        Self {
-            llm_provider,
-            tool_registry,
-            conversation,
-            context_manager,
-            config,
-            ui_tx,
-            cmd_rx,
-            session,
-            auto_save: true,
-            cancel_requested: false,
-            tool_call_count: 0,
-            json_parser: JsonParser::new(),
-            jsonl_logger,
-        }
+        temp_actor.jsonl_logger = jsonl_logger;
+        temp_actor
     }
 
     pub fn with_session(
@@ -135,7 +157,26 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
         ui_tx: Sender<UIUpdate>,
         cmd_rx: Receiver<Command>,
         session: Session,
+        project_context: Option<String>,
     ) -> Self {
+        // Create a temporary instance to call instance methods
+        let temp = Self {
+            llm_provider: llm_provider.clone(),
+            tool_registry: tool_registry.clone(),
+            conversation: Vec::new(),
+            project_context: project_context.clone(),
+            context_manager: ContextManager::new(llm_provider.clone()),
+            config: config.clone(),
+            ui_tx: ui_tx.clone(),
+            cmd_rx,
+            session: Session::new(config.model.clone()),
+            auto_save: true,
+            cancel_requested: false,
+            tool_call_count: 0,
+            json_parser: JsonParser::new(),
+            jsonl_logger: JsonlLogger::new("temp").unwrap(),
+        };
+
         let mut conversation = session.messages.clone();
 
         // Ensure system prompt is first (prepend if not present)
@@ -144,7 +185,7 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
             .unwrap_or(false);
 
         if !has_system_prompt {
-            conversation.insert(0, Self::create_system_prompt());
+            conversation.insert(0, temp.create_system_prompt());
         }
 
         // Initialize context manager with session messages
@@ -175,10 +216,11 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
             llm_provider,
             tool_registry,
             conversation,
+            project_context,
             context_manager,
             config,
-            ui_tx,
-            cmd_rx,
+            ui_tx: temp.ui_tx,
+            cmd_rx: temp.cmd_rx,
             session,
             auto_save: true,
             cancel_requested: false,
@@ -190,6 +232,10 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
 
     pub fn session_id(&self) -> &str {
         &self.session.id
+    }
+
+    pub fn conversation(&self) -> &[Message] {
+        &self.conversation
     }
 
     /// Convert internal Message to MessageLog for JSONL logging
@@ -334,12 +380,17 @@ Be direct, confident, and proactive. Use tools without hesitation."#.to_string()
                     // Create new session
                     self.session = Session::new(self.config.model.clone());
                     self.conversation.clear();
-                    self.conversation.push(Self::create_system_prompt()); // Add system prompt to new session
+                    self.conversation.push(self.create_system_prompt()); // Add system prompt to new session
+                    if let Some(project_msg) = self.create_project_context_message() {
+                        self.conversation.push(project_msg);
+                    }
 
-                    // Reset context manager with new system prompt
+                    // Reset context manager with new system prompts
                     self.context_manager = ContextManager::new(self.llm_provider.clone());
                     self.context_manager.set_max_token_limit(self.config.context_window);
-                    self.context_manager.add_message(Self::create_system_prompt());
+                    for msg in &self.conversation {
+                        self.context_manager.add_message(msg.clone());
+                    }
 
                     // Tell UI to clear displayed conversation
                     self.ui_tx.send(UIUpdate::ConversationCleared).await?;
