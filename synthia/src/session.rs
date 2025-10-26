@@ -16,7 +16,7 @@ pub struct Session {
 
 impl Session {
     pub fn new(model: String) -> Self {
-        let now = chrono::Utc::now().timestamp();
+        let now = chrono::Utc::now().timestamp_millis();
         Self {
             id: generate_session_id(),
             name: None,
@@ -29,12 +29,12 @@ impl Session {
 
     pub fn add_message(&mut self, message: Message) {
         self.messages.push(message);
-        self.last_modified = chrono::Utc::now().timestamp();
+        self.last_modified = chrono::Utc::now().timestamp_millis();
     }
 
     pub fn set_name(&mut self, name: String) {
         self.name = Some(name);
-        self.last_modified = chrono::Utc::now().timestamp();
+        self.last_modified = chrono::Utc::now().timestamp_millis();
     }
 
     pub fn save(&self) -> Result<()> {
@@ -180,6 +180,7 @@ mod tests {
     use crate::types::{ContentBlock, Role};
     use tempfile::TempDir;
     use std::env;
+    use serial_test::serial;
 
     fn setup_test_env() -> TempDir {
         let temp_dir = TempDir::new().unwrap();
@@ -283,6 +284,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_list_sessions() {
         let temp_dir = TempDir::new().unwrap();
 
@@ -307,6 +309,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_most_recent_session() {
         let temp_dir = TempDir::new().unwrap();
 
