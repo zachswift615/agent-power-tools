@@ -82,6 +82,7 @@ async fn main() -> Result<()> {
         gen_config,
         ui_tx,
         cmd_rx,
+        None, // TODO: Task 3 will load project context here
     );
 
     // Spawn agent actor
