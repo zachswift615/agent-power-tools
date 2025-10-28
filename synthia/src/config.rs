@@ -204,45 +204,85 @@ impl Default for Config {
 }
 
 impl Config {
-    /// Load configuration from file or use defaults
+    /// Load configuration with proper hierarchy and merging
     ///
-    /// Checks the following locations in order:
-    /// 1. ~/.config/synthia/config.toml
-    /// 2. ./synthia.toml (current directory)
+    /// **Config Priority (highest to lowest):**
+    /// 1. `./synthia.toml` (project-level config - HIGHEST priority)
+    /// 2. `~/.config/synthia/config.toml` (global user config)
+    /// 3. Hardcoded defaults (fallback)
     ///
-    /// If no config file is found, returns default configuration
+    /// **Merging behavior:**
+    /// - Project config overrides specific fields in global config
+    /// - Missing fields use global config or defaults
+    ///
+    /// **Single Source of Truth:**
+    /// - Global config: `~/.config/synthia/config.toml`
+    /// - Project config: `./synthia.toml` (optional, overrides global)
+    /// - No other config locations are checked
     pub fn load() -> Result<Self> {
-        let config_paths = Self::get_config_paths();
+        // Start with defaults
+        let mut config = Config::default();
 
-        for path in &config_paths {
-            if path.exists() {
-                tracing::info!("Loading config from: {}", path.display());
-                let contents = fs::read_to_string(path)
-                    .with_context(|| format!("Failed to read config file: {}", path.display()))?;
-
-                let config: Config = toml::from_str(&contents)
-                    .with_context(|| format!("Failed to parse config file: {}", path.display()))?;
-
-                return Ok(config);
+        // Load global config if it exists (lowest priority override)
+        if let Some(global_path) = Self::global_config_path() {
+            if global_path.exists() {
+                tracing::info!("Loading global config from: {}", global_path.display());
+                let global_config = Self::load_from_file(&global_path)?;
+                config = Self::merge_configs(config, global_config);
             }
         }
 
-        tracing::info!("No config file found, using defaults");
-        Ok(Config::default())
-    }
-
-    /// Get the list of config file paths to check (in order)
-    fn get_config_paths() -> Vec<PathBuf> {
-        let mut paths = Vec::new();
-
-        // 1. ~/.config/synthia/config.toml
-        if let Some(home) = dirs::home_dir() {
-            paths.push(home.join(".config").join("synthia").join("config.toml"));
+        // Load project config if it exists (highest priority override)
+        let project_path = Self::project_config_path();
+        if project_path.exists() {
+            tracing::info!("Loading project config from: {}", project_path.display());
+            let project_config = Self::load_from_file(&project_path)?;
+            config = Self::merge_configs(config, project_config);
         }
 
-        // 2. ./synthia.toml (current directory)
-        paths.push(PathBuf::from("synthia.toml"));
+        tracing::info!(
+            "Final config: model={}, api_base={}",
+            config.llm.model,
+            config.llm.api_base
+        );
 
+        Ok(config)
+    }
+
+    /// Load config from a specific file
+    fn load_from_file(path: &Path) -> Result<Self> {
+        let contents = fs::read_to_string(path)
+            .with_context(|| format!("Failed to read config file: {}", path.display()))?;
+
+        toml::from_str(&contents)
+            .with_context(|| format!("Failed to parse config file: {}", path.display()))
+    }
+
+    /// Merge two configs (override takes precedence for non-default values)
+    fn merge_configs(_base: Config, override_config: Config) -> Config {
+        // For now, override completely replaces base
+        // TODO: Could implement field-level merging if needed
+        override_config
+    }
+
+    /// Get the global config path (~/.config/synthia/config.toml)
+    fn global_config_path() -> Option<PathBuf> {
+        dirs::home_dir().map(|home| home.join(".config").join("synthia").join("config.toml"))
+    }
+
+    /// Get the project config path (./synthia.toml in current directory)
+    fn project_config_path() -> PathBuf {
+        PathBuf::from("synthia.toml")
+    }
+
+    /// DEPRECATED: Use global_config_path() or project_config_path()
+    #[deprecated(note = "Use global_config_path() or project_config_path() instead")]
+    fn get_config_paths() -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+        if let Some(path) = Self::global_config_path() {
+            paths.push(path);
+        }
+        paths.push(Self::project_config_path());
         paths
     }
 

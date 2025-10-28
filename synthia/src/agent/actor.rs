@@ -22,6 +22,9 @@ use tokio::sync::mpsc::{Receiver, Sender};
 // based on initialization parameters
 const SYSTEM_PROMPT: &str = include_str!("../../prompts/system_prompt.md");
 
+// Safeguard limits to prevent runaway code generation
+const MAX_WRITES_PER_FILE: usize = 2; // Prevent write loops to same file
+
 pub struct AgentActor {
     llm_provider: Arc<dyn LLMProvider>,
     tool_registry: Arc<ToolRegistry>,
@@ -37,6 +40,7 @@ pub struct AgentActor {
     tool_call_count: usize, // Track tool calls in current turn
     json_parser: JsonParser, // For robust JSON parsing
     jsonl_logger: JsonlLogger, // For logging request/response turns
+    file_write_counts: HashMap<String, usize>, // Track writes per file per turn
 }
 
 impl AgentActor {
@@ -88,6 +92,7 @@ impl AgentActor {
             tool_call_count: 0,
             json_parser: JsonParser::new(),
             jsonl_logger: JsonlLogger::new("temp").unwrap(),
+            file_write_counts: HashMap::new(),
         };
 
         // Build conversation with system messages
@@ -149,6 +154,7 @@ impl AgentActor {
             tool_call_count: 0,
             json_parser: JsonParser::new(),
             jsonl_logger: JsonlLogger::new("temp").unwrap(),
+            file_write_counts: HashMap::new(),
         };
 
         let mut conversation = session.messages.clone();
@@ -201,6 +207,7 @@ impl AgentActor {
             tool_call_count: 0,
             json_parser: JsonParser::new(),
             jsonl_logger,
+            file_write_counts: HashMap::new(),
         }
     }
 
@@ -481,6 +488,7 @@ impl AgentActor {
         // Reset cancellation flag and tool call count at the start
         self.cancel_requested = false;
         self.tool_call_count = 0;
+        self.file_write_counts.clear(); // Reset per-file write tracking for new turn
         const MAX_TOOL_CALLS: usize = 50; // Prevent infinite loops
 
         loop {
@@ -662,6 +670,41 @@ impl AgentActor {
         for block in &content {
             if let ContentBlock::ToolUse { id, name, input } = block {
                 tool_calls.push((id.clone(), name.clone(), input.clone()));
+            }
+        }
+
+        // Safeguard: Check for excessive writes/edits to same file
+        for (id, name, input) in &tool_calls {
+            if name == "write" || name == "edit" {
+                if let Some(file_path) = input.get("file_path").and_then(|v| v.as_str()) {
+                    let count = self.file_write_counts.entry(file_path.to_string()).or_insert(0);
+                    *count += 1;
+
+                    if *count > MAX_WRITES_PER_FILE {
+                        let error_msg = format!(
+                            "Error: Attempted to write/edit file '{}' {} times in one turn (max: {}). \
+                            This indicates a code generation loop. Stopping to prevent file corruption.",
+                            file_path, count, MAX_WRITES_PER_FILE
+                        );
+                        tracing::warn!("{}", error_msg);
+
+                        // Add error message to conversation
+                        let error_message = Message {
+                            role: Role::User,
+                            content: vec![ContentBlock::ToolResult {
+                                tool_use_id: id.clone(),
+                                content: error_msg,
+                                is_error: true,
+                            }],
+                        };
+                        self.conversation.push(error_message.clone());
+                        self.context_manager.add_message(error_message.clone());
+                        self.session.add_message(error_message);
+
+                        // Skip all remaining tool executions
+                        return Ok(());
+                    }
+                }
             }
         }
 
@@ -877,6 +920,41 @@ impl AgentActor {
                     })
                     .await?;
                 tool_calls.push((id.clone(), name.clone(), input.clone()));
+            }
+        }
+
+        // Safeguard: Check for excessive writes/edits to same file
+        for (id, name, input) in &tool_calls {
+            if name == "write" || name == "edit" {
+                if let Some(file_path) = input.get("file_path").and_then(|v| v.as_str()) {
+                    let count = self.file_write_counts.entry(file_path.to_string()).or_insert(0);
+                    *count += 1;
+
+                    if *count > MAX_WRITES_PER_FILE {
+                        let error_msg = format!(
+                            "Error: Attempted to write/edit file '{}' {} times in one turn (max: {}). \
+                            This indicates a code generation loop. Stopping to prevent file corruption.",
+                            file_path, count, MAX_WRITES_PER_FILE
+                        );
+                        tracing::warn!("{}", error_msg);
+
+                        // Add error message to conversation
+                        let error_message = Message {
+                            role: Role::User,
+                            content: vec![ContentBlock::ToolResult {
+                                tool_use_id: id.clone(),
+                                content: error_msg,
+                                is_error: true,
+                            }],
+                        };
+                        self.conversation.push(error_message.clone());
+                        self.context_manager.add_message(error_message.clone());
+                        self.session.add_message(error_message);
+
+                        // Skip all remaining tool executions
+                        return Ok(());
+                    }
+                }
             }
         }
 

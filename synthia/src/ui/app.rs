@@ -716,8 +716,11 @@ impl App {
             }
             UIUpdate::TokenStatsUpdate(stats) => {
                 self.token_stats = Some(stats);
-                // Don't update header here - just store the stats
-                // The header will show updated stats on next screen clear or session event
+                // Clear screen and redraw with updated header
+                execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                self.print_header(stdout)?;
+                stdout.flush()?;
+                self.input_needs_render = true;
             }
         }
 
@@ -1525,17 +1528,8 @@ impl App {
                 else if !self.input.is_empty() {
                     let msg = self.input.clone();
 
-                    // Clear input line and print user message
+                    // Clear input line and send message (no echo)
                     self.clear_input_line(stdout)?;
-                    queue!(
-                        stdout,
-                        SetForegroundColor(Color::Green),
-                        Print("You: "),
-                        ResetColor
-                    )?;
-                    let sanitized = sanitize_text(&msg);
-                    writeln!(stdout, "{}", sanitized)?;
-                    writeln!(stdout)?;
                     stdout.flush()?;
 
                     self.cmd_tx.send(Command::SendMessage(msg)).await?;
