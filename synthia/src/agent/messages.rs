@@ -17,6 +17,7 @@ pub enum Command {
 #[derive(Debug, Clone)]
 pub enum ApprovalResponse {
     Approve,
+    ApproveDontAsk(String),  // NEW: contains permission pattern
     Reject,
 }
 

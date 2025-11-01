@@ -309,6 +309,17 @@ impl ToolRegistry {
                 let tool = self.get("edit").ok_or_else(|| anyhow!("Edit tool not found"))?;
                 tool.execute(params).await
             }
+            Ok(crate::agent::messages::ApprovalResponse::ApproveDontAsk(pattern)) => {
+                // Add permission and execute
+                self.permission_manager
+                    .lock()
+                    .map_err(|e| anyhow!("Failed to acquire permission manager lock: {}", e))?
+                    .add_permission(pattern)?;
+
+                // Execute the edit
+                let tool = self.get("edit").ok_or_else(|| anyhow!("Edit tool not found"))?;
+                tool.execute(params).await
+            }
             Ok(crate::agent::messages::ApprovalResponse::Reject) => {
                 // User rejected
                 Ok(ToolResult {
@@ -373,6 +384,17 @@ impl ToolRegistry {
         // Wait for user response
         match response_rx.await {
             Ok(crate::agent::messages::ApprovalResponse::Approve) => {
+                // Execute the write
+                let tool = self.get("write").ok_or_else(|| anyhow!("Write tool not found"))?;
+                tool.execute(params).await
+            }
+            Ok(crate::agent::messages::ApprovalResponse::ApproveDontAsk(pattern)) => {
+                // Add permission and execute
+                self.permission_manager
+                    .lock()
+                    .map_err(|e| anyhow!("Failed to acquire permission manager lock: {}", e))?
+                    .add_permission(pattern)?;
+
                 // Execute the write
                 let tool = self.get("write").ok_or_else(|| anyhow!("Write tool not found"))?;
                 tool.execute(params).await

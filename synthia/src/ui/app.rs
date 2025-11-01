@@ -1090,7 +1090,7 @@ impl App {
         print_line(stdout, "│")?;
 
         // Accept/Reject prompt
-        print_bordered_line(stdout, "[A]ccept  [R]eject", Color::Cyan)?;
+        print_bordered_line(stdout, "[A]ccept  [D]on't ask for this file  [R]eject", Color::Cyan)?;
 
         // Bottom border
         print_colored_line(stdout, "└───────────────────────────────────────────────────────┘", Color::Yellow)?;
@@ -1413,6 +1413,14 @@ impl App {
             match (key.code, key.modifiers) {
                 (KeyCode::Char('a'), _) | (KeyCode::Char('A'), _) => {
                     let _ = approval_state.response_tx.send(crate::agent::messages::ApprovalResponse::Approve);
+                    execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                    self.print_header(stdout)?;
+                    return Ok(());
+                }
+                (KeyCode::Char('d'), _) | (KeyCode::Char('D'), _) => {
+                    // Build pattern for this specific file
+                    let pattern = format!("Edit(//{})", approval_state.file_path);
+                    let _ = approval_state.response_tx.send(crate::agent::messages::ApprovalResponse::ApproveDontAsk(pattern));
                     execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
                     self.print_header(stdout)?;
                     return Ok(());
