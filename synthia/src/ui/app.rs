@@ -1270,9 +1270,13 @@ impl App {
         stdout.flush()
     }
 
+    /// Build permission pattern for "don't ask again" option.
+    ///
+    /// NOTE: The returned pattern is NOT used by the registry. The registry rebuilds
+    /// the actual permission pattern using PermissionManager::build_pattern() because
+    /// the UI doesn't have access to the tool parameters. This method returns the
+    /// suggested_pattern which is just for display purposes.
     fn build_permission_pattern(&self, state: &PermissionApprovalState) -> String {
-        // This will be constructed from the actual operation params
-        // For now, return the suggested pattern that registry will compute
         state.suggested_pattern.clone()
     }
 
