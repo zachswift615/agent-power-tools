@@ -219,7 +219,7 @@ impl ToolRegistry {
         let content = tokio::fs::read_to_string(file_path).await?;
 
         if !content.contains(old_string) {
-            return Ok(format!("String '{}' not found in file", old_string));
+            return Err(anyhow!("String '{}' not found in file", old_string));
         }
 
         // Compute diff
@@ -248,7 +248,7 @@ impl ToolRegistry {
             // New file - show as all additions
             Ok(new_content
                 .lines()
-                .map(|line| format!("+{}", line))
+                .map(|line| format!("+ {}", line))
                 .collect::<Vec<_>>()
                 .join("\n"))
         } else {
@@ -346,7 +346,7 @@ impl ToolRegistry {
         let diff = if old_content.is_empty() {
             // New file - show as all additions
             new_content.lines()
-                .map(|line| format!("+{}", line))
+                .map(|line| format!("+ {}", line))
                 .collect::<Vec<_>>()
                 .join("\n")
         } else {
