@@ -3,6 +3,8 @@ mod config;
 mod context_manager;
 mod jsonl_logger;
 mod llm;
+mod permission_config;
+mod permission_manager;
 mod project;
 mod project_context;
 mod session;
@@ -15,7 +17,9 @@ use project_context::ProjectContext;
 use anyhow::Result;
 use config::Config;
 use llm::{openai::OpenAICompatibleProvider, GenerationConfig};
+use permission_manager::PermissionManager;
 use std::sync::Arc;
+use std::sync::Mutex;
 use tools::{
     bash::BashTool, edit::EditTool, git::GitTool, glob::GlobTool, grep::GrepTool,
     powertools::PowertoolsTool, read::ReadTool, registry::ToolRegistry,
@@ -48,6 +52,11 @@ async fn main() -> Result<()> {
         tracing::info!("Loaded project-specific instructions from .synthia/.SYNTHIA.md ({} bytes)", instructions.len());
     }
 
+    // Create permission manager
+    let permission_manager = Arc::new(Mutex::new(
+        PermissionManager::new(project_context.project_root.clone())?
+    ));
+
     // Create LLM provider
     let llm_provider = Arc::new(OpenAICompatibleProvider::new(
         config.llm.api_base.clone(),
@@ -55,7 +64,7 @@ async fn main() -> Result<()> {
     ));
 
     // Create tool registry with configured timeouts
-    let mut tool_registry = ToolRegistry::new();
+    let mut tool_registry = ToolRegistry::new(permission_manager);
     tool_registry.register(Arc::new(BashTool::new(config.timeouts.bash_timeout)))?;
     tool_registry.register(Arc::new(ReadTool::new()))?;
     tool_registry.register(Arc::new(WriteTool::new()))?;

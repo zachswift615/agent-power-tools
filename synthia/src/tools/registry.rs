@@ -6,19 +6,23 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use crate::agent::messages::UIUpdate;
+use crate::permission_manager::{PermissionManager, PermissionDecision};
+use std::sync::Mutex;
 
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn Tool>>,
     cache: ToolCache,
     ui_tx: Option<Sender<UIUpdate>>,
+    permission_manager: Arc<Mutex<PermissionManager>>,
 }
 
 impl ToolRegistry {
-    pub fn new() -> Self {
+    pub fn new(permission_manager: Arc<Mutex<PermissionManager>>) -> Self {
         Self {
             tools: HashMap::new(),
             cache: ToolCache::new(100), // Cache last 100 results
             ui_tx: None,
+            permission_manager,
         }
     }
 
@@ -43,6 +47,26 @@ impl ToolRegistry {
     }
 
     pub async fn execute(&self, name: &str, params: Value) -> Result<ToolResult> {
+        // 1. Check permission first
+        let decision = self.permission_manager.lock().unwrap()
+            .check_permission(name, &params);
+
+        match decision {
+            PermissionDecision::Deny => {
+                return Ok(ToolResult {
+                    content: "Operation denied by permissions".to_string(),
+                    is_error: true,
+                });
+            }
+            PermissionDecision::Allow => {
+                // For edit/write: show informational diff if in allow list
+                // For others: execute directly
+            }
+            PermissionDecision::Ask => {
+                // Proceed to existing approval flow
+            }
+        }
+
         // Intercept edit tool for approval
         if name == "edit" && self.ui_tx.is_some() {
             return self.execute_edit_with_approval(params).await;
@@ -251,7 +275,14 @@ impl ToolRegistry {
 
 impl Default for ToolRegistry {
     fn default() -> Self {
-        Self::new()
+        // Create a temporary permission manager for tests
+        use std::env;
+        let temp_dir = env::temp_dir();
+        let project_root = temp_dir.join("test_registry_default");
+        let permission_manager = Arc::new(Mutex::new(
+            PermissionManager::new(project_root).expect("Failed to create permission manager")
+        ));
+        Self::new(permission_manager)
     }
 }
 
