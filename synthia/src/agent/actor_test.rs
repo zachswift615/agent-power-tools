@@ -92,11 +92,25 @@ mod tests {
         }
     }
 
+    /// Helper function to create a ToolRegistry for testing
+    fn create_test_registry() -> ToolRegistry {
+        use std::env;
+        use crate::permission_manager::PermissionManager;
+        use std::sync::{Arc, Mutex};
+
+        let temp_dir = env::temp_dir();
+        let project_root = temp_dir.join(format!("test_registry_{}", uuid::Uuid::new_v4()));
+        let permission_manager = Arc::new(Mutex::new(
+            PermissionManager::new(project_root).expect("Failed to create permission manager")
+        ));
+        ToolRegistry::new(permission_manager)
+    }
+
     #[tokio::test]
     #[ignore] // TODO: This test is incomplete - needs proper actor lifecycle handling
     async fn test_parallel_tool_execution() {
         // Create a tool registry with 3 slow tools
-        let mut registry = ToolRegistry::new();
+        let mut registry = create_test_registry();
         registry
             .register(Arc::new(SleepTool {
                 name: "sleep1".to_string(),

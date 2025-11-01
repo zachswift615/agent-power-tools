@@ -48,33 +48,40 @@ impl ToolRegistry {
 
     pub async fn execute(&self, name: &str, params: Value) -> Result<ToolResult> {
         // 1. Check permission first
-        let decision = self.permission_manager.lock().unwrap()
+        let decision = self.permission_manager
+            .lock()
+            .map_err(|e| anyhow!("Failed to acquire permission manager lock: {}", e))?
             .check_permission(name, &params);
+
+        tracing::debug!("Permission check for tool '{}': {:?}", name, decision);
 
         match decision {
             PermissionDecision::Deny => {
+                tracing::warn!("Tool '{}' denied by permission system", name);
                 return Ok(ToolResult {
                     content: "Operation denied by permissions".to_string(),
                     is_error: true,
                 });
             }
             PermissionDecision::Allow => {
-                // For edit/write: show informational diff if in allow list
-                // For others: execute directly
+                // For Allow: bypass approval flow, go straight to cache/execute
+                // TODO: For edit/write in allow list, consider showing informational diff
+                tracing::debug!("Tool '{}' allowed by permission system, bypassing approval", name);
             }
             PermissionDecision::Ask => {
-                // Proceed to existing approval flow
+                // For Ask: if edit/write, use approval flow
+                // Otherwise fall through to normal execution
+                if (name == "edit" || name == "write") && self.ui_tx.is_some() {
+                    tracing::debug!("Tool '{}' requires approval, routing to approval flow", name);
+                    if name == "edit" {
+                        return self.execute_edit_with_approval(params).await;
+                    } else {
+                        return self.execute_write_with_approval(params).await;
+                    }
+                }
+                // Non-edit/write tools just proceed to normal execution
+                tracing::debug!("Tool '{}' requires ask but no approval flow available, executing normally", name);
             }
-        }
-
-        // Intercept edit tool for approval
-        if name == "edit" && self.ui_tx.is_some() {
-            return self.execute_edit_with_approval(params).await;
-        }
-
-        // Intercept write tool for approval
-        if name == "write" && self.ui_tx.is_some() {
-            return self.execute_write_with_approval(params).await;
         }
 
         // Check cache first for deterministic tools
@@ -292,6 +299,17 @@ mod tests {
     use crate::tools::Tool;
     use async_trait::async_trait;
 
+    /// Helper function to create a ToolRegistry for testing
+    fn create_test_registry() -> ToolRegistry {
+        use std::env;
+        let temp_dir = env::temp_dir();
+        let project_root = temp_dir.join(format!("test_registry_{}", uuid::Uuid::new_v4()));
+        let permission_manager = Arc::new(Mutex::new(
+            PermissionManager::new(project_root).expect("Failed to create permission manager")
+        ));
+        ToolRegistry::new(permission_manager)
+    }
+
     struct TestTool;
 
     #[async_trait]
@@ -315,7 +333,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_registry_register_and_execute() {
-        let mut registry = ToolRegistry::new();
+        let mut registry = create_test_registry();
         registry.register(Arc::new(TestTool)).unwrap();
 
         let result = registry
@@ -327,14 +345,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_registry_missing_tool() {
-        let registry = ToolRegistry::new();
+        let registry = create_test_registry();
         let result = registry.execute("missing", serde_json::json!({})).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn test_registry_collision_detection() {
-        let mut registry = ToolRegistry::new();
+        let mut registry = create_test_registry();
 
         // First registration should succeed
         let result = registry.register(Arc::new(TestTool));
@@ -357,7 +375,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_deterministic_tools() {
-        let mut registry = ToolRegistry::new();
+        let mut registry = create_test_registry();
 
         // Create a simple deterministic tool that tracks execution count
         use std::sync::atomic::{AtomicU32, Ordering};
@@ -419,7 +437,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_invalidation() {
-        let mut registry = ToolRegistry::new();
+        let mut registry = create_test_registry();
 
         use std::sync::atomic::{AtomicU32, Ordering};
         use std::sync::Arc;
@@ -477,7 +495,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_stats() {
-        let mut registry = ToolRegistry::new();
+        let mut registry = create_test_registry();
         registry.register(Arc::new(TestTool)).unwrap();
 
         // Check initial stats
@@ -494,7 +512,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_non_deterministic_tools_not_cached() {
-        let mut registry = ToolRegistry::new();
+        let mut registry = create_test_registry();
 
         use std::sync::atomic::{AtomicU32, Ordering};
         use std::sync::Arc;
