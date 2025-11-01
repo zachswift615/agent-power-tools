@@ -77,6 +77,7 @@ impl PermissionConfig {
 mod tests {
     use super::*;
     use std::env;
+    use std::path::PathBuf;
 
     #[test]
     fn test_default_config() {

@@ -5,6 +5,7 @@ pub mod context_manager;
 pub mod jsonl_logger;
 pub mod llm;
 pub mod permission_config;
+pub mod permission_manager;
 pub mod project;
 pub mod project_context;
 pub mod session;
