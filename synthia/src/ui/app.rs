@@ -722,6 +722,39 @@ impl App {
                 stdout.flush()?;
                 self.input_needs_render = true;
             }
+            UIUpdate::PermissionPrompt {
+                tool_name,
+                operation_details,
+                suggested_pattern,
+                response_tx,
+            } => {
+                // Store permission approval state for input handling
+                // For now, just auto-approve (UI rendering will be implemented in Task 5)
+                let _ = response_tx.send(crate::agent::messages::PermissionResponse::Yes);
+            }
+            UIUpdate::InformationalDiff {
+                tool_name,
+                file_path,
+                diff,
+            } => {
+                // Display informational diff
+                self.clear_input_line(stdout)?;
+                print_colored_line(
+                    stdout,
+                    &format!("[Auto-approved] {} for {}", tool_name, file_path),
+                    Color::Green,
+                )?;
+                print_colored_line(stdout, "Diff:", Color::DarkGrey)?;
+                execute!(
+                    stdout,
+                    SetForegroundColor(Color::DarkGrey),
+                    Print(diff),
+                    Print("\r\n"),
+                    ResetColor
+                )?;
+                stdout.flush()?;
+                self.input_needs_render = true;
+            }
         }
 
         Ok(())

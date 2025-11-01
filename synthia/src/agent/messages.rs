@@ -21,6 +21,13 @@ pub enum ApprovalResponse {
 }
 
 #[derive(Debug)]
+pub enum PermissionResponse {
+    Yes,
+    YesAndDontAsk(String),  // Contains pattern to add
+    No,
+}
+
+#[derive(Debug)]
 pub enum UIUpdate {
     AssistantText(String),
     AssistantTextDelta(String), // For streaming text chunks
@@ -50,4 +57,15 @@ pub enum UIUpdate {
     MenuDisplayRequested,  // Signal UI to display menu
     SystemMessage(String), // System notifications (e.g., auto-compaction)
     TokenStatsUpdate(crate::context_manager::TokenStats), // Token usage stats update
+    PermissionPrompt {
+        tool_name: String,
+        operation_details: String,
+        suggested_pattern: String,
+        response_tx: tokio::sync::oneshot::Sender<PermissionResponse>,
+    },
+    InformationalDiff {
+        tool_name: String,
+        file_path: String,
+        diff: String,
+    },
 }

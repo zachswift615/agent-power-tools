@@ -65,22 +65,118 @@ impl ToolRegistry {
             }
             PermissionDecision::Allow => {
                 // For Allow: bypass approval flow, go straight to cache/execute
-                // TODO: For edit/write in allow list, consider showing informational diff
+                // For edit/write: show informational diff
+                if (name == "edit" || name == "write") && self.ui_tx.is_some() {
+                    tracing::debug!("Tool '{}' auto-approved, showing informational diff", name);
+
+                    // Compute diff for informational display
+                    let diff_result = if name == "edit" {
+                        self.compute_edit_diff(&params).await
+                    } else {
+                        self.compute_write_diff(&params).await
+                    };
+
+                    if let Ok(diff) = diff_result {
+                        if let Some(ui_tx) = &self.ui_tx {
+                            let _ = ui_tx
+                                .send(UIUpdate::InformationalDiff {
+                                    tool_name: name.to_string(),
+                                    file_path: params["file_path"]
+                                        .as_str()
+                                        .unwrap_or("unknown")
+                                        .to_string(),
+                                    diff,
+                                })
+                                .await;
+                        }
+                    }
+                }
                 tracing::debug!("Tool '{}' allowed by permission system, bypassing approval", name);
             }
             PermissionDecision::Ask => {
                 // For Ask: if edit/write, use approval flow
-                // Otherwise fall through to normal execution
-                if (name == "edit" || name == "write") && self.ui_tx.is_some() {
-                    tracing::debug!("Tool '{}' requires approval, routing to approval flow", name);
-                    if name == "edit" {
-                        return self.execute_edit_with_approval(params).await;
-                    } else {
-                        return self.execute_write_with_approval(params).await;
+                if name == "edit" || name == "write" {
+                    if self.ui_tx.is_some() {
+                        tracing::debug!("Tool '{}' requires approval, routing to approval flow", name);
+                        if name == "edit" {
+                            return self.execute_edit_with_approval(params).await;
+                        } else {
+                            return self.execute_write_with_approval(params).await;
+                        }
+                    }
+                } else {
+                    // New permission prompt for other tools
+                    if let Some(ui_tx) = &self.ui_tx {
+                        tracing::debug!("Tool '{}' requires permission prompt", name);
+                        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
+
+                        let operation_details = match name {
+                            "bash" => {
+                                format!("Command: {}\nDirectory: {}",
+                                    params["command"].as_str().unwrap_or("unknown"),
+                                    std::env::current_dir()
+                                        .unwrap_or_default()
+                                        .to_string_lossy())
+                            }
+                            "read" => {
+                                format!("Read file: {}",
+                                    params["file_path"].as_str().unwrap_or("unknown"))
+                            }
+                            "git" => {
+                                format!("Git command: {}",
+                                    params["command"].as_str().unwrap_or("unknown"))
+                            }
+                            "webfetch" => {
+                                format!("Fetch URL: {}",
+                                    params["url"].as_str().unwrap_or("unknown"))
+                            }
+                            _ => format!("Operation: {} with params", name),
+                        };
+
+                        let suggested_pattern = self.permission_manager
+                            .lock()
+                            .map_err(|e| anyhow!("Failed to acquire permission manager lock: {}", e))?
+                            .suggest_pattern(name, &params);
+
+                        ui_tx
+                            .send(UIUpdate::PermissionPrompt {
+                                tool_name: name.to_string(),
+                                operation_details,
+                                suggested_pattern,
+                                response_tx,
+                            })
+                            .await?;
+
+                        match response_rx.await? {
+                            crate::agent::messages::PermissionResponse::Yes => {
+                                // Execute once
+                                tracing::debug!("Permission granted for tool '{}'", name);
+                            }
+                            crate::agent::messages::PermissionResponse::YesAndDontAsk(_) => {
+                                // Build actual permission pattern from tool and params
+                                let pattern = self.permission_manager
+                                    .lock()
+                                    .map_err(|e| anyhow!("Failed to acquire permission manager lock: {}", e))?
+                                    .build_pattern(name, &params);
+
+                                self.permission_manager
+                                    .lock()
+                                    .map_err(|e| anyhow!("Failed to acquire permission manager lock: {}", e))?
+                                    .add_permission(pattern)?;
+                                tracing::info!("Permission saved for tool '{}'", name);
+                            }
+                            crate::agent::messages::PermissionResponse::No => {
+                                tracing::debug!("Permission denied by user for tool '{}'", name);
+                                return Ok(ToolResult {
+                                    content: "Operation cancelled by user".to_string(),
+                                    is_error: false,
+                                });
+                            }
+                        }
                     }
                 }
-                // Non-edit/write tools just proceed to normal execution
-                tracing::debug!("Tool '{}' requires ask but no approval flow available, executing normally", name);
+                // Non-edit/write tools without UI proceed to normal execution
+                tracing::debug!("Tool '{}' requires ask but no UI available, executing normally", name);
             }
         }
 
@@ -104,6 +200,61 @@ impl ToolRegistry {
         }
 
         Ok(result)
+    }
+
+    async fn compute_edit_diff(&self, params: &Value) -> Result<String> {
+        use crate::tools::diff::compute_diff;
+
+        let file_path = params["file_path"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing file_path"))?;
+        let old_string = params["old_string"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing old_string"))?;
+        let new_string = params["new_string"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing new_string"))?;
+
+        // Read current file content
+        let content = tokio::fs::read_to_string(file_path).await?;
+
+        if !content.contains(old_string) {
+            return Ok(format!("String '{}' not found in file", old_string));
+        }
+
+        // Compute diff
+        let new_content = content.replace(old_string, new_string);
+        Ok(compute_diff(&content, &new_content))
+    }
+
+    async fn compute_write_diff(&self, params: &Value) -> Result<String> {
+        use crate::tools::diff::compute_diff;
+
+        let file_path = params["file_path"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing file_path"))?;
+        let new_content = params["content"]
+            .as_str()
+            .ok_or_else(|| anyhow!("Missing content"))?;
+
+        // Check if file exists
+        let old_content = match tokio::fs::read_to_string(file_path).await {
+            Ok(content) => content,
+            Err(_) => String::new(),
+        };
+
+        // Compute diff
+        if old_content.is_empty() {
+            // New file - show as all additions
+            Ok(new_content
+                .lines()
+                .map(|line| format!("+{}", line))
+                .collect::<Vec<_>>()
+                .join("\n"))
+        } else {
+            // Existing file - show diff
+            Ok(compute_diff(&old_content, new_content))
+        }
     }
 
     async fn execute_edit_with_approval(&self, params: Value) -> Result<ToolResult> {
