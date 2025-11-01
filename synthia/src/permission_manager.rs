@@ -55,7 +55,7 @@ impl PermissionManager {
     }
 
     /// Build a permission pattern from tool and params
-    fn build_pattern(&self, tool: &str, params: &Value) -> String {
+    pub fn build_pattern(&self, tool: &str, params: &Value) -> String {
         match tool {
             "bash" => {
                 if let Some(command) = params["command"].as_str() {
