@@ -270,6 +270,14 @@ struct EditApprovalState {
     response_tx: tokio::sync::oneshot::Sender<crate::agent::messages::ApprovalResponse>,
 }
 
+struct PermissionApprovalState {
+    tool_name: String,
+    operation_details: String,
+    suggested_pattern: String,
+    response_tx: tokio::sync::oneshot::Sender<crate::agent::messages::PermissionResponse>,
+    selected_option: usize,  // 0, 1, or 2
+}
+
 pub struct App {
     input: String,
     cursor_position: usize,
@@ -285,6 +293,7 @@ pub struct App {
     input_needs_render: bool, // Track if input line needs re-rendering
     is_rendering_input: bool, // Guard flag to prevent concurrent input renders
     pending_edit_approval: Option<EditApprovalState>,
+    pending_permission_approval: Option<PermissionApprovalState>,
     show_menu: bool,              // NEW: Menu display flag
     menu_selected: usize,         // NEW: Selected menu item index
     show_reasoning_submenu: bool, // NEW: Reasoning submenu display flag
@@ -319,6 +328,7 @@ impl App {
             input_needs_render: true, // Render on first loop
             is_rendering_input: false, // Not rendering initially
             pending_edit_approval: None,
+            pending_permission_approval: None,
             show_menu: false,         // NEW
             menu_selected: 0,         // NEW
             show_reasoning_submenu: false, // NEW
@@ -728,30 +738,52 @@ impl App {
                 suggested_pattern,
                 response_tx,
             } => {
-                // Store permission approval state for input handling
-                // For now, just auto-approve (UI rendering will be implemented in Task 5)
-                let _ = response_tx.send(crate::agent::messages::PermissionResponse::Yes);
+                self.clear_input_line(stdout)?;
+                self.pending_permission_approval = Some(PermissionApprovalState {
+                    tool_name,
+                    operation_details,
+                    suggested_pattern,
+                    response_tx,
+                    selected_option: 0,  // Default to first option
+                });
+                self.render_permission_prompt(stdout)?;
             }
             UIUpdate::InformationalDiff {
                 tool_name,
                 file_path,
                 diff,
             } => {
-                // Display informational diff
+                // Display informational diff in message history style
                 self.clear_input_line(stdout)?;
-                print_colored_line(
+
+                // Format as informational message
+                queue!(
                     stdout,
-                    &format!("[Auto-approved] {} for {}", tool_name, file_path),
-                    Color::Green,
-                )?;
-                print_colored_line(stdout, "Diff:", Color::DarkGrey)?;
-                execute!(
-                    stdout,
+                    SetForegroundColor(Color::Green),
+                    Print(format!("✓ Auto-approved: {} for {}\r\n", tool_name, file_path)),
+                    ResetColor,
                     SetForegroundColor(Color::DarkGrey),
-                    Print(diff),
-                    Print("\r\n"),
-                    ResetColor
+                    Print("Diff preview:\r\n"),
                 )?;
+
+                // Show diff with proper formatting
+                for line in diff.lines() {
+                    let color = if line.starts_with('+') {
+                        Color::Green
+                    } else if line.starts_with('-') {
+                        Color::Red
+                    } else {
+                        Color::DarkGrey
+                    };
+
+                    queue!(
+                        stdout,
+                        SetForegroundColor(color),
+                        Print(format!("{}\r\n", line)),
+                    )?;
+                }
+
+                queue!(stdout, ResetColor, Print("\r\n"))?;
                 stdout.flush()?;
                 self.input_needs_render = true;
             }
@@ -922,6 +954,53 @@ impl App {
 
         write!(stdout, "\r\n")?;
         stdout.flush()
+    }
+
+    fn render_permission_prompt(&self, stdout: &mut impl Write) -> io::Result<()> {
+        if let Some(state) = &self.pending_permission_approval {
+            // Top border
+            print_colored_line(stdout, "┌─ Permission Required ─────────────────────────────────┐", Color::Yellow)?;
+
+            // Tool name
+            print_line(stdout, &format!("│ Tool: {}", state.tool_name))?;
+            print_line(stdout, "│")?;
+
+            // Operation details (multi-line support)
+            for line in state.operation_details.lines() {
+                print_line(stdout, &format!("│ {}", line))?;
+            }
+            print_line(stdout, "│")?;
+
+            // Prompt text
+            print_line(stdout, "│ Do you want to proceed?")?;
+            print_line(stdout, "│")?;
+
+            // Options with arrow navigation
+            let option1 = if state.selected_option == 0 { "→" } else { " " };
+            let option2 = if state.selected_option == 1 { "→" } else { " " };
+            let option3 = if state.selected_option == 2 { "→" } else { " " };
+
+            print_line(stdout, &format!("│ {} 1. Yes", option1))?;
+            print_line(stdout, &format!("│ {} 2. Yes, and {}", option2, state.suggested_pattern))?;
+            print_line(stdout, &format!("│ {} 3. No (esc)", option3))?;
+            print_line(stdout, "│")?;
+
+            // Instructions
+            queue!(
+                stdout,
+                Print("│ "),
+                SetForegroundColor(Color::Cyan),
+                Print("(↑/↓ or 1-3 to select, Enter to confirm, Esc to cancel)"),
+                ResetColor,
+            )?;
+            print_line(stdout, "")?;
+
+            // Bottom border
+            print_colored_line(stdout, "└───────────────────────────────────────────────────────┘", Color::Yellow)?;
+
+            stdout.flush()?;
+        }
+        Ok(())
     }
 
     fn render_edit_approval_prompt(&self, stdout: &mut impl Write, file_path: &str, diff: &str) -> io::Result<()> {
@@ -1191,6 +1270,12 @@ impl App {
         stdout.flush()
     }
 
+    fn build_permission_pattern(&self, state: &PermissionApprovalState) -> String {
+        // This will be constructed from the actual operation params
+        // For now, return the suggested pattern that registry will compute
+        state.suggested_pattern.clone()
+    }
+
     async fn handle_menu_selection(&mut self, stdout: &mut impl Write) -> anyhow::Result<()> {
         match self.menu_selected {
             0 => {
@@ -1262,6 +1347,62 @@ impl App {
             }
         }
         self.last_key_time = Some(now);
+
+        // Check if we have pending permission approval
+        if let Some(mut approval_state) = self.pending_permission_approval.take() {
+            match key.code {
+                KeyCode::Up => {
+                    approval_state.selected_option = approval_state.selected_option.saturating_sub(1);
+                    self.pending_permission_approval = Some(approval_state);
+                    self.render_permission_prompt(stdout)?;
+                    return Ok(());
+                }
+                KeyCode::Down => {
+                    approval_state.selected_option = (approval_state.selected_option + 1).min(2);
+                    self.pending_permission_approval = Some(approval_state);
+                    self.render_permission_prompt(stdout)?;
+                    return Ok(());
+                }
+                KeyCode::Char('1') => {
+                    let _ = approval_state.response_tx.send(crate::agent::messages::PermissionResponse::Yes);
+                    execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                    self.print_header(stdout)?;
+                    return Ok(());
+                }
+                KeyCode::Char('2') => {
+                    let pattern = self.build_permission_pattern(&approval_state);
+                    let _ = approval_state.response_tx.send(crate::agent::messages::PermissionResponse::YesAndDontAsk(pattern));
+                    execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                    self.print_header(stdout)?;
+                    return Ok(());
+                }
+                KeyCode::Char('3') | KeyCode::Esc => {
+                    let _ = approval_state.response_tx.send(crate::agent::messages::PermissionResponse::No);
+                    execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                    self.print_header(stdout)?;
+                    return Ok(());
+                }
+                KeyCode::Enter => {
+                    let response = match approval_state.selected_option {
+                        0 => crate::agent::messages::PermissionResponse::Yes,
+                        1 => {
+                            let pattern = self.build_permission_pattern(&approval_state);
+                            crate::agent::messages::PermissionResponse::YesAndDontAsk(pattern)
+                        }
+                        2 => crate::agent::messages::PermissionResponse::No,
+                        _ => crate::agent::messages::PermissionResponse::No,
+                    };
+                    let _ = approval_state.response_tx.send(response);
+                    execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+                    self.print_header(stdout)?;
+                    return Ok(());
+                }
+                _ => {
+                    // Put state back and continue processing
+                    self.pending_permission_approval = Some(approval_state);
+                }
+            }
+        }
 
         // Handle edit approval input
         if let Some(approval_state) = self.pending_edit_approval.take() {

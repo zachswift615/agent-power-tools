@@ -18,6 +18,7 @@ use anyhow::Result;
 use config::Config;
 use llm::{openai::OpenAICompatibleProvider, GenerationConfig};
 use permission_manager::PermissionManager;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tools::{
@@ -53,8 +54,12 @@ async fn main() -> Result<()> {
     }
 
     // Create permission manager
+    // Use parent of .synthia dir as project root
+    let project_root = project_context.synthia_dir.parent()
+        .unwrap_or(Path::new("."))
+        .to_path_buf();
     let permission_manager = Arc::new(Mutex::new(
-        PermissionManager::new(project_context.project_root.clone())?
+        PermissionManager::new(project_root)?
     ));
 
     // Create LLM provider
