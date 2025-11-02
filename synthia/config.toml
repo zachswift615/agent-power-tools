@@ -71,3 +71,17 @@ max_output_lines = 1000
 # If not specified, Synthia uses the embedded binary (extracted to ~/.cache/synthia/powertools)
 # Uncomment and set this only if you want to use a custom powertools build:
 # powertools_binary_path = "/path/to/custom/powertools"
+
+# Maximum output size for bash commands in characters (~4 chars per token)
+# Prevents massive outputs like 'ls -R' on large projects from hitting rate limits
+# Default: 50,000 chars (~12,500 tokens)
+max_bash_output_chars = 50000
+
+# Maximum output size for read operations in characters
+# Files can be larger than bash output, so this is more generous
+# Default: 200,000 chars (~50,000 tokens)
+max_read_output_chars = 200000
+
+# Warn (but don't fail) when reading files larger than this
+# Default: 100,000 chars (~25,000 tokens)
+read_warn_at_chars = 100000

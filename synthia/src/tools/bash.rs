@@ -8,11 +8,15 @@ use tokio::time::timeout;
 
 pub struct BashTool {
     timeout_seconds: u64,
+    max_output_chars: usize,
 }
 
 impl BashTool {
-    pub fn new(timeout_seconds: u64) -> Self {
-        Self { timeout_seconds }
+    pub fn new(timeout_seconds: u64, max_output_chars: usize) -> Self {
+        Self {
+            timeout_seconds,
+            max_output_chars,
+        }
     }
 }
 
@@ -79,11 +83,33 @@ impl Tool for BashTool {
         let stderr = String::from_utf8_lossy(&result.stderr);
 
         // Prepend command for clarity
-        let content = if !stderr.is_empty() {
+        let mut content = if !stderr.is_empty() {
             format!("Command: {}\n\nstdout:\n{}\nstderr:\n{}", command, stdout, stderr)
         } else {
             format!("Command: {}\n\n{}", command, stdout)
         };
+
+        // Check if output exceeds limit and truncate with helpful error
+        if content.len() > self.max_output_chars {
+            let truncated = &content[..self.max_output_chars];
+            let error_msg = format!(
+                "\n\n<truncated after {} characters>\n\n\
+                ERROR: Output exceeded maximum size ({} chars / ~{} tokens)\n\n\
+                Command: {}\n\n\
+                Suggestions:\n\
+                - For file listings: Use 'find' with filters (e.g., find . -name \"*.rs\" -type f)\n\
+                - For large directories: Use 'ls' on specific subdirectories\n\
+                - For searching: Use 'grep' or 'rg' with specific patterns\n\
+                - For file counts: Use 'find . -type f | wc -l'\n\
+                - For directory size: Use 'du -sh <directory>'\n\n\
+                If you need the full output, try breaking this into smaller commands.",
+                self.max_output_chars,
+                content.len(),
+                content.len() / 4, // rough token estimate
+                command
+            );
+            content = format!("{}{}", truncated, error_msg);
+        }
 
         Ok(ToolResult {
             content,
@@ -98,7 +124,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bash_echo() {
-        let tool = BashTool::new(5);
+        let tool = BashTool::new(5, 50_000);
         let result = tool
             .execute(serde_json::json!({
                 "command": "echo 'hello world'"
@@ -112,7 +138,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bash_error() {
-        let tool = BashTool::new(5);
+        let tool = BashTool::new(5, 50_000);
         let result = tool
             .execute(serde_json::json!({
                 "command": "exit 1"
@@ -125,7 +151,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bash_timeout() {
-        let tool = BashTool::new(1);
+        let tool = BashTool::new(1, 50_000);
         let result = tool
             .execute(serde_json::json!({
                 "command": "sleep 10"
@@ -133,5 +159,20 @@ mod tests {
             .await;
 
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_bash_output_truncation() {
+        let tool = BashTool::new(5, 100); // Small limit for testing
+        let result = tool
+            .execute(serde_json::json!({
+                "command": "seq 1 1000" // Generates lots of output
+            }))
+            .await
+            .unwrap();
+
+        assert!(result.content.contains("<truncated after 100 characters>"));
+        assert!(result.content.contains("ERROR: Output exceeded maximum size"));
+        assert!(result.content.contains("Suggestions:"));
     }
 }

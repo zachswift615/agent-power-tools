@@ -28,6 +28,7 @@ Synthia is a terminal-based AI coding agent that combines the intelligence of mo
 **🚀 Smart & Fast**
 - Token-aware context management (up to 400k with GPT-5)
 - Streaming responses with real-time token tracking
+- Intelligent output limiting prevents rate limit errors from massive outputs
 - Works with local LLMs (LM Studio, Ollama) or cloud (OpenAI, Anthropic)
 - Configurable timeouts and safety limits
 
@@ -474,6 +475,87 @@ Synthia: [Examines endpoint implementations, generates tests]
 - Automatic truncation when approaching limits
 - Warning when context is near capacity
 
+**🚦 Intelligent Output Limiting (NEW in v0.3.0)**
+
+Synthia now protects against rate limit errors from massive tool outputs with smart truncation and helpful guidance.
+
+**The Problem:**
+Running `ls -R` on a large project can generate 40,000+ tokens of output → instant rate limit error → conversation dead.
+
+**The Solution:**
+Per-tool output limits with graceful degradation:
+
+**Bash Commands (50K chars / ~12,500 tokens):**
+```bash
+You: "Show me the project structure"
+Synthia: [Runs: ls -R ~/projects/surge]
+
+<truncated after 50,000 characters>
+
+ERROR: Output exceeded maximum size (41,397 chars / ~10,349 tokens)
+
+Command: ls -R ~/projects/surge
+
+Suggestions:
+- For file listings: Use 'find' with filters (e.g., find . -name "*.rs" -type f)
+- For large directories: Use 'ls' on specific subdirectories
+- For searching: Use 'grep' or 'rg' with specific patterns
+- For file counts: Use 'find . -type f | wc -l'
+
+If you need the full output, try breaking this into smaller commands.
+
+Synthia: [Sees error and retries with: find . -name "*.rs" -type f | head -50]
+```
+
+**File Reads (200K chars / ~50,000 tokens):**
+```bash
+You: "What's in the giant log file?"
+Synthia: [Tries: read debug.log]
+
+ERROR: File too large to read in full
+
+File: /var/log/debug.log
+Size: 250,000 chars (~62,500 tokens)
+Limit: 200,000 chars (~50,000 tokens)
+
+Options:
+1. Use grep to search for specific content
+2. Use 'head' to read first 100 lines: head -n 100 debug.log
+3. Use 'tail' to read last 100 lines: tail -n 100 debug.log
+4. Ask me to summarize specific sections
+
+Synthia: [Adjusts strategy: tail -n 50 debug.log]
+```
+
+**Smart Warnings:**
+For large files under the limit, Synthia shows a warning but continues:
+```
+⚠️  WARNING: Large file (125,000 chars / ~31,250 tokens)
+Consider using grep/head/tail for large files to reduce token usage.
+
+[file contents follow...]
+```
+
+**Configuration:**
+Fine-tune limits in `~/.config/synthia/config.toml`:
+```toml
+[tools]
+# Bash command output limit (prevents 'ls -R' disasters)
+max_bash_output_chars = 50000    # ~12,500 tokens
+
+# File read limit (more generous for legitimate large files)
+max_read_output_chars = 200000   # ~50,000 tokens
+
+# Warn when files exceed this (but still read them)
+read_warn_at_chars = 100000      # ~25,000 tokens
+```
+
+**Why This Matters:**
+- **Never hit rate limits** from accidental large outputs
+- **Synthia learns** from the error messages and adjusts strategy
+- **Configurable** - tune limits for your provider's token limits
+- **Transparent** - you see exactly what was truncated and why
+
 ## Troubleshooting
 
 **Problem: Synthia appears frozen when trying to use a tool**
@@ -488,8 +570,9 @@ Synthia: [Examines endpoint implementations, generates tests]
 
 **Problem: "Request too large" errors with OpenAI**
 - **Cause:** Tool output exceeds token limits, or `max_tokens` too high
-- **Fix:** Reduce `max_tokens` to 8000-16000 in config
-- **Workaround:** Ask simpler questions that require less context
+- **Fix (v0.3.0+):** This is now prevented automatically with intelligent output limiting
+- **If still occurring:** Reduce `max_bash_output_chars` or `max_read_output_chars` in config
+- **Legacy workaround:** Lower `max_tokens` to 8000-16000 in config
 
 **Problem: Permission prompt doesn't appear**
 - **Cause:** May be testing old version without permission system
@@ -503,6 +586,34 @@ Synthia: [Examines endpoint implementations, generates tests]
 See [CONFIG.md](CONFIG.md) for more troubleshooting tips.
 
 ## Recent Changes
+
+### v0.3.0 (2025-01-16) - Intelligent Output Limiting
+
+**Major Features:**
+- ✨ **Smart Output Truncation**: Per-tool output limits prevent rate limit errors
+- ✨ **Helpful Error Messages**: Clear guidance when outputs are too large
+- ✨ **Graceful Recovery**: Synthia sees errors and adjusts strategy automatically
+- ✨ **Configurable Limits**: Fine-tune thresholds per tool type
+
+**Output Limiting Details:**
+- Bash commands: 50K chars (~12,500 tokens) - prevents `ls -R` disasters
+- File reads: 200K chars (~50,000 tokens) - generous for legitimate large files
+- Warning threshold: 100K chars - warns but still reads files
+- Comprehensive error messages with alternative command suggestions
+- Preserves partial output before truncation for context
+
+**Why This Matters:**
+The original issue: `ls -R ~/projects/surge` → 41,397 tokens → rate limit error → conversation dead.
+
+Now: Truncates at 50K chars, shows helpful error with suggestions → Synthia retries with better command → conversation continues.
+
+**Configuration:**
+```toml
+[tools]
+max_bash_output_chars = 50000   # ~12,500 tokens
+max_read_output_chars = 200000  # ~50,000 tokens
+read_warn_at_chars = 100000     # ~25,000 tokens
+```
 
 ### v0.2.0 (2025-01-15) - Permission System
 

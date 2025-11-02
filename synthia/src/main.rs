@@ -68,10 +68,16 @@ async fn main() -> Result<()> {
         config.llm.api_key.clone(),
     ));
 
-    // Create tool registry with configured timeouts
+    // Create tool registry with configured timeouts and output limits
     let mut tool_registry = ToolRegistry::new(permission_manager);
-    tool_registry.register(Arc::new(BashTool::new(config.timeouts.bash_timeout)))?;
-    tool_registry.register(Arc::new(ReadTool::new()))?;
+    tool_registry.register(Arc::new(BashTool::new(
+        config.timeouts.bash_timeout,
+        config.tools.max_bash_output_chars,
+    )))?;
+    tool_registry.register(Arc::new(ReadTool::new(
+        config.tools.max_read_output_chars,
+        config.tools.read_warn_at_chars,
+    )))?;
     tool_registry.register(Arc::new(WriteTool::new()))?;
     tool_registry.register(Arc::new(EditTool::new()))?;
     tool_registry.register(Arc::new(GrepTool::new()))?;

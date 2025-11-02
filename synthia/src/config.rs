@@ -94,6 +94,21 @@ pub struct ToolsConfig {
     /// If not specified, uses the embedded binary.
     #[serde(default)]
     pub powertools_binary_path: Option<PathBuf>,
+
+    /// Maximum output size for bash commands in characters (~4 chars per token)
+    /// Default: 50,000 chars (~12,500 tokens)
+    #[serde(default = "default_max_bash_output_chars")]
+    pub max_bash_output_chars: usize,
+
+    /// Maximum output size for read operations in characters
+    /// Default: 200,000 chars (~50,000 tokens)
+    #[serde(default = "default_max_read_output_chars")]
+    pub max_read_output_chars: usize,
+
+    /// Warn at this many characters for read operations (doesn't fail, just warns)
+    /// Default: 100,000 chars (~25,000 tokens)
+    #[serde(default = "default_read_warn_at_chars")]
+    pub read_warn_at_chars: usize,
 }
 
 // Default value functions
@@ -149,6 +164,18 @@ fn default_context_window() -> Option<usize> {
     Some(8192)
 }
 
+fn default_max_bash_output_chars() -> usize {
+    50_000 // ~12,500 tokens
+}
+
+fn default_max_read_output_chars() -> usize {
+    200_000 // ~50,000 tokens
+}
+
+fn default_read_warn_at_chars() -> usize {
+    100_000 // ~25,000 tokens
+}
+
 impl Default for LLMConfig {
     fn default() -> Self {
         Self {
@@ -188,6 +215,9 @@ impl Default for ToolsConfig {
     fn default() -> Self {
         Self {
             powertools_binary_path: None,
+            max_bash_output_chars: default_max_bash_output_chars(),
+            max_read_output_chars: default_max_read_output_chars(),
+            read_warn_at_chars: default_read_warn_at_chars(),
         }
     }
 }
