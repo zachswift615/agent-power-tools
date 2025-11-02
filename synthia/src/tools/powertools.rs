@@ -10,7 +10,8 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 // Embed the powertools binary at compile time
-static POWERTOOLS_BINARY: &[u8] = include_bytes!("../../../powertools-cli/target/release/powertools");
+// In a Cargo workspace, target directory is at workspace root
+static POWERTOOLS_BINARY: &[u8] = include_bytes!("../../../target/release/powertools");
 
 /// Powertools integration tool that provides semantic code navigation capabilities
 /// by shelling out to the powertools binary. Operations include:
@@ -347,7 +348,8 @@ mod tests {
 
     fn get_test_binary_path() -> PathBuf {
         // Use relative path from synthia directory to powertools binary
-        PathBuf::from("../powertools-cli/target/release/powertools")
+        // In a Cargo workspace, target directory is at workspace root
+        PathBuf::from("../target/release/powertools")
     }
 
     #[tokio::test]

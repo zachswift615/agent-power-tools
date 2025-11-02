@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 fn main() {
     // Verify powertools binary exists at compile time
-    let powertools_path = PathBuf::from("../powertools-cli/target/release/powertools");
+    // In a Cargo workspace, target directory is at workspace root
+    let powertools_path = PathBuf::from("../target/release/powertools");
 
     if !powertools_path.exists() {
         panic!(
@@ -11,6 +12,6 @@ fn main() {
         );
     }
 
-    println!("cargo:rerun-if-changed=../powertools-cli/target/release/powertools");
+    println!("cargo:rerun-if-changed=../target/release/powertools");
     println!("cargo:rerun-if-changed=../powertools-cli/src");
 }

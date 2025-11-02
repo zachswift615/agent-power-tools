@@ -401,6 +401,8 @@ impl App {
                 && !self.show_context_submenu
                 && !self.show_session_name_input
                 && !self.show_log_viewer
+                && self.pending_edit_approval.is_none()
+                && self.pending_permission_approval.is_none()
                 && self.input_needs_render
             {
                 self.render_input_line(&mut stdout)?;
@@ -810,43 +812,21 @@ impl App {
 
         self.is_rendering_input = true;
 
+        // Clear the current input line first
+        execute!(
+            stdout,
+            Print("\r"),
+            Clear(ClearType::CurrentLine)
+        )?;
+
+        // Get current Y position after clearing
+        let (_, cursor_y) = cursor::position()?;
+
         let (term_width, _) = size()?;
         let prompt_len = 5; // "You: "
 
         // Split input into lines by actual newlines
         let lines: Vec<&str> = self.input.split('\n').collect();
-
-        // Calculate total screen lines needed (accounting for line wrapping)
-        let mut total_screen_lines = 0;
-        for (idx, line) in lines.iter().enumerate() {
-            let line_len = if idx == 0 {
-                prompt_len + line.chars().count()
-            } else {
-                line.chars().count()
-            };
-            let wrapped_lines = if line_len == 0 { 1 } else { (line_len + term_width as usize - 1) / term_width as usize };
-            total_screen_lines += wrapped_lines;
-        }
-
-        // Get current cursor position
-        let (_, mut cursor_y) = cursor::position()?;
-
-        // Move up to the start of the input if needed
-        if total_screen_lines > 1 {
-            let lines_to_move_up = total_screen_lines.saturating_sub(1);
-            if lines_to_move_up > 0 && cursor_y >= lines_to_move_up as u16 {
-                cursor_y -= lines_to_move_up as u16;
-                queue!(stdout, cursor::MoveTo(0, cursor_y))?;
-            }
-        }
-
-        // Clear from current position to end of screen
-        queue!(
-            stdout,
-            cursor::MoveTo(0, cursor_y),
-            Clear(ClearType::FromCursorDown)
-        )?;
-        stdout.flush()?;
 
         // Print prompt and first line
         queue!(
