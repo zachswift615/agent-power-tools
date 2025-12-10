@@ -36,6 +36,8 @@ git add synthia/Cargo.toml Cargo.lock
 git commit -m "deps: add rustyline 17.0.2 for input management"
 ```
 
+**Important Note**: We are using ONLY `rustyline::line_buffer::LineBuffer`, not the full Rustyline `Editor`. `LineBuffer` is a pure data structure for managing text and cursor position - it doesn't handle terminal I/O. We continue using crossterm for async event polling and rendering.
+
 ---
 
 ## Task 2: Create InputManager Module Skeleton
@@ -54,14 +56,21 @@ use crossterm::style::{Color, Print, ResetColor, SetForegroundColor};
 use crossterm::{cursor, execute, queue, terminal::size, terminal::Clear, terminal::ClearType};
 use rustyline::line_buffer::LineBuffer;
 use std::io::{self, Write};
+use std::time::Instant;
 
 use crate::ui::colors::PastelColors;
+
+const MAX_HISTORY_SIZE: usize = 100;  // Limit input history to prevent memory bloat
+const MAX_INPUT_LENGTH: usize = 100_000;  // 100K chars max
 
 pub struct InputManager {
     buffer: LineBuffer,
     history: Vec<String>,
     history_index: Option<usize>,
     prompt: String,
+    // Paste detection (10ms threshold - keys < 10ms apart = pasting)
+    is_pasting: bool,
+    last_key_time: Option<Instant>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -80,7 +89,9 @@ impl InputManager {
             buffer: LineBuffer::with_capacity(1024),
             history: Vec::new(),
             history_index: None,
-            prompt: "> ".to_string(),
+            prompt: "You: ".to_string(),
+            is_pasting: false,
+            last_key_time: None,
         }
     }
 
@@ -188,9 +199,25 @@ Replace `handle_key()` method in `synthia/src/ui/input.rs`:
 
 ```rust
 pub fn handle_key(&mut self, key: KeyEvent) -> InputAction {
+    // Update paste detection (keys < 10ms apart = pasting)
+    let now = Instant::now();
+    if let Some(last_time) = self.last_key_time {
+        let elapsed = now.duration_since(last_time);
+        if elapsed.as_millis() < 10 {
+            self.is_pasting = true;
+        } else if elapsed.as_millis() > 100 {
+            self.is_pasting = false;
+        }
+    }
+    self.last_key_time = Some(now);
+
     match (key.code, key.modifiers) {
         // Character input
         (KeyCode::Char(c), _) => {
+            // Check max input length
+            if self.buffer.as_str().chars().count() >= MAX_INPUT_LENGTH {
+                return InputAction::None;  // Silently ignore
+            }
             self.buffer.insert(c, 1);
             InputAction::Redraw
         }
@@ -268,16 +295,28 @@ Expected: FAIL on both new tests
 Update `handle_key()` in `synthia/src/ui/input.rs`, add before the `_` pattern:
 
 ```rust
-// Submit on Enter (not Shift+Enter)
-(KeyCode::Enter, modifiers) if !modifiers.contains(KeyModifiers::SHIFT) => {
+// Submit on Enter (but not during paste or Shift+Enter, and not if empty)
+(KeyCode::Enter, modifiers) if !modifiers.contains(KeyModifiers::SHIFT) && !self.is_pasting => {
     let text = self.buffer.as_str().to_string();
+
+    // Don't submit empty input
+    if text.trim().is_empty() {
+        return InputAction::None;
+    }
+
+    // Add to history (with limit)
     self.history.push(text.clone());
+    if self.history.len() > MAX_HISTORY_SIZE {
+        self.history.remove(0);  // Remove oldest
+    }
+
     self.history_index = None;
     self.buffer.clear();
+    self.is_pasting = false;  // Reset paste mode
     InputAction::Submit(text)
 }
 
-// Shift+Enter inserts newline
+// Shift+Enter OR pasting: insert newline (don't auto-submit)
 (KeyCode::Enter, _) => {
     self.buffer.insert('\n', 1);
     InputAction::Redraw
@@ -565,6 +604,11 @@ fn history_prev(&mut self) {
 }
 
 fn history_next(&mut self) {
+    // Guard against empty history
+    if self.history.is_empty() {
+        return;
+    }
+
     match self.history_index {
         None => {} // Not in history, do nothing
         Some(i) if i >= self.history.len() - 1 => {
@@ -712,7 +756,7 @@ pub fn render(&self, stdout: &mut impl Write) -> io::Result<()> {
         Clear(ClearType::FromCursorDown)
     )?;
 
-    // Print prompt
+    // Print colored prompt
     queue!(
         stdout,
         SetForegroundColor(PastelColors::SUCCESS),
@@ -720,43 +764,30 @@ pub fn render(&self, stdout: &mut impl Write) -> io::Result<()> {
         ResetColor
     )?;
 
-    // Print buffer contents
+    // SIMPLIFIED APPROACH: Let the terminal handle cursor positioning!
+    // Split text at cursor position
     let text = self.buffer.as_str();
-    let lines: Vec<&str> = text.split('\n').collect();
-
-    // First line (same line as prompt)
-    queue!(stdout, Print(lines[0]))?;
-
-    // Subsequent lines (newline-separated)
-    for line in &lines[1..] {
-        queue!(stdout, Print("\r\n"), Print(line))?;
-    }
-
-    // Position cursor
     let cursor_pos = self.buffer.pos();
-    let mut chars_before_cursor = 0;
-    let mut current_line = 0;
 
-    for (line_idx, line) in lines.iter().enumerate() {
-        let line_len = line.chars().count();
-        if chars_before_cursor + line_len >= cursor_pos {
-            current_line = line_idx;
-            break;
-        }
-        chars_before_cursor += line_len + 1; // +1 for newline
-    }
-
-    let cursor_col = cursor_pos - chars_before_cursor;
-    let cursor_x = if current_line == 0 {
-        self.prompt.chars().count() + cursor_col
+    // Split into before/after cursor
+    let (before_cursor, after_cursor) = if cursor_pos <= text.len() {
+        text.split_at(cursor_pos)
     } else {
-        cursor_col
+        (text, "")
     };
 
-    queue!(
-        stdout,
-        cursor::MoveTo(cursor_x as u16, cursor_y + current_line as u16)
-    )?;
+    // Print text BEFORE cursor
+    queue!(stdout, Print(before_cursor))?;
+
+    // Ask terminal: "where's the cursor now?" (terminal knows after wrapping!)
+    stdout.flush()?;
+    let (saved_x, saved_y) = cursor::position()?;
+
+    // Print text AFTER cursor
+    queue!(stdout, Print(after_cursor))?;
+
+    // Move cursor back to saved position
+    queue!(stdout, cursor::MoveTo(saved_x, saved_y))?;
 
     stdout.flush()
 }
