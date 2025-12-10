@@ -81,6 +81,9 @@ pub enum InputAction {
     Cancel,
     Quit,
     OpenMenu,
+    SaveSession,
+    NewSession,
+    ListSessions,
 }
 
 impl InputManager {
@@ -657,7 +660,7 @@ git commit -m "feat: add history navigation with up/down arrows"
 
 ---
 
-## Task 8: Implement Special Keys (Ctrl+C, Ctrl+D, Ctrl+P)
+## Task 8: Implement Special Keys (Ctrl+C, Ctrl+D, Ctrl+P, Ctrl+S, Ctrl+N, Ctrl+L)
 
 **Files:**
 - Modify: `synthia/src/ui/input.rs`
@@ -691,6 +694,27 @@ fn test_special_keys() {
         KeyModifiers::CONTROL
     ));
     assert_eq!(action, InputAction::OpenMenu);
+
+    // Ctrl+S saves session
+    let action = mgr.handle_key(KeyEvent::new(
+        KeyCode::Char('s'),
+        KeyModifiers::CONTROL
+    ));
+    assert_eq!(action, InputAction::SaveSession);
+
+    // Ctrl+N new session
+    let action = mgr.handle_key(KeyEvent::new(
+        KeyCode::Char('n'),
+        KeyModifiers::CONTROL
+    ));
+    assert_eq!(action, InputAction::NewSession);
+
+    // Ctrl+L list sessions
+    let action = mgr.handle_key(KeyEvent::new(
+        KeyCode::Char('l'),
+        KeyModifiers::CONTROL
+    ));
+    assert_eq!(action, InputAction::ListSessions);
 }
 ```
 
@@ -719,6 +743,21 @@ Update `handle_key()`, add at the BEGINNING (before other patterns):
 (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
     InputAction::Quit
 }
+
+// Ctrl+S for save session
+(KeyCode::Char('s'), KeyModifiers::CONTROL) => {
+    InputAction::SaveSession
+}
+
+// Ctrl+N for new session
+(KeyCode::Char('n'), KeyModifiers::CONTROL) => {
+    InputAction::NewSession
+}
+
+// Ctrl+L for list sessions
+(KeyCode::Char('l'), KeyModifiers::CONTROL) => {
+    InputAction::ListSessions
+}
 ```
 
 **Step 4: Run test to verify it passes**
@@ -731,7 +770,14 @@ Expected: PASS
 
 ```bash
 git add synthia/src/ui/input.rs
-git commit -m "feat: add Ctrl+C (cancel), Ctrl+D (quit), Ctrl+P (menu)"
+git commit -m "feat: add all keyboard shortcuts
+
+- Ctrl+C: cancel
+- Ctrl+D: quit
+- Ctrl+P: menu
+- Ctrl+S: save session
+- Ctrl+N: new session
+- Ctrl+L: list sessions"
 ```
 
 ---
@@ -963,16 +1009,30 @@ git commit -m "refactor: add modal management methods (enter/exit/has_active)"
 
 In the `run()` method (around line 366), find the section that processes keyboard events and comment it out. Look for the pattern matching on `Event::Key`.
 
-**Step 2: Add new key handling**
+**Step 2: Add new key and resize handling**
 
 Replace the commented section with:
 
 ```rust
-// Process keyboard input
+// Process keyboard input and resize events
 if event::poll(Duration::from_millis(0))? {
-    if let Event::Key(key) = event::read()? {
-        self.handle_key_event(&mut stdout, key).await?;
-        had_input = true;
+    match event::read()? {
+        Event::Key(key) => {
+            self.handle_key_event(&mut stdout, key).await?;
+            had_input = true;
+        }
+        Event::Resize(cols, rows) => {
+            // Force re-render on resize
+            match self.mode {
+                AppMode::Input => {
+                    self.input_manager.render(&mut stdout)?;
+                }
+                AppMode::Modal(_) => {
+                    self.render_modal(&mut stdout)?;
+                }
+            }
+        }
+        _ => {} // Ignore other events
     }
 }
 ```
@@ -1044,6 +1104,15 @@ async fn handle_input_action(
         }
         InputAction::OpenMenu => {
             self.enter_modal(ModalType::Menu { selected: 0 });
+        }
+        InputAction::SaveSession => {
+            self.cmd_tx.send(Command::SaveSession).await?;
+        }
+        InputAction::NewSession => {
+            self.cmd_tx.send(Command::NewSession).await?;
+        }
+        InputAction::ListSessions => {
+            self.cmd_tx.send(Command::ListSessions).await?;
         }
         InputAction::Redraw | InputAction::None => {
             // Will be rendered in main loop
@@ -1257,14 +1326,16 @@ git commit -m "test: add manual integration test results"
 
 ---
 
-## Task 17: Fix Modal Rendering (If Broken)
+## Task 17: Migrate Modal State to AppMode (REQUIRED)
+
+**Why this is required**: Task 14 deletes fields like `show_menu`, `pending_edit_approval`, etc. that modals depend on. This migration is NOT optional - modals will break without it.
 
 **Files:**
 - Modify: `synthia/src/ui/app.rs`
 
 **Step 1: Consolidate old modal flags into ModalType**
 
-Find all these flags in `App` struct and remove them:
+Find all these flags in `App` struct and remove them (Task 14 already deleted some):
 - `show_menu: bool`
 - `menu_selected: usize`
 - `show_reasoning_submenu: bool`
