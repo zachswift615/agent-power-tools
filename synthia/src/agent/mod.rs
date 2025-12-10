@@ -5,4 +5,3 @@ pub mod messages;
 mod actor_test;
 
 pub use actor::AgentActor;
-pub use messages::{Command, UIUpdate};

@@ -5,11 +5,13 @@ use std::sync::Arc;
 
 const MAX_MESSAGES: usize = 100;
 const SUMMARY_THRESHOLD: usize = 80;
+#[allow(dead_code)]
 const SUMMARY_CHUNK_SIZE: usize = 20;
 
 pub struct ContextManager {
     messages: Vec<Message>,
     max_messages: usize,
+    #[allow(dead_code)]
     summary_threshold: usize,
     llm_provider: Arc<dyn LLMProvider>,
     current_token_count: usize,      // Track current context tokens

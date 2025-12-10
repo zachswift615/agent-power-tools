@@ -5,6 +5,7 @@ use ratatui::{
 
 /// Simple markdown renderer for TUI
 /// Supports: **bold**, *italic*, `code`, # headers, - lists, and code blocks
+#[allow(dead_code)]
 pub fn render_markdown(text: &str) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let mut in_code_block = false;
@@ -109,6 +110,7 @@ pub fn render_markdown(text: &str) -> Vec<Line<'static>> {
     lines
 }
 
+#[allow(dead_code)]
 fn parse_inline_formatting(text: &str) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     let mut current = String::new();

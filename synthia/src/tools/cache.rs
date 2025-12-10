@@ -63,6 +63,7 @@ impl ToolCache {
     }
 
     /// Invalidate all cached results for a specific tool
+    #[allow(dead_code)]
     pub fn invalidate_tool(&self, tool_name: &str) {
         let mut cache = self.cache.lock().unwrap();
 
@@ -82,6 +83,7 @@ impl ToolCache {
     }
 
     /// Invalidate all cached results
+    #[allow(dead_code)]
     pub fn clear(&self) {
         let mut cache = self.cache.lock().unwrap();
         cache.clear();
@@ -96,6 +98,7 @@ impl ToolCache {
     }
 
     /// Get cache statistics
+    #[allow(dead_code)]
     pub fn stats(&self) -> CacheStats {
         let cache = self.cache.lock().unwrap();
         let hits = *self.hits.lock().unwrap();
@@ -117,12 +120,14 @@ impl ToolCache {
     }
 
     /// Enable or disable the cache
+    #[allow(dead_code)]
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
         tracing::info!("Cache {}", if enabled { "enabled" } else { "disabled" });
     }
 
     /// Check if cache is enabled
+    #[allow(dead_code)]
     pub fn is_enabled(&self) -> bool {
         self.enabled
     }
@@ -130,6 +135,7 @@ impl ToolCache {
 
 /// Cache statistics
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct CacheStats {
     pub size: usize,
     pub capacity: usize,

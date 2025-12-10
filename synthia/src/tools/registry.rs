@@ -435,6 +435,7 @@ impl ToolRegistry {
     }
 
     /// Invalidate cache when files change (e.g., after write, edit, git operations)
+    #[allow(dead_code)]
     pub fn invalidate_file_cache(&self) {
         self.cache.invalidate_tool("read");
         self.cache.invalidate_tool("grep");
@@ -443,11 +444,13 @@ impl ToolRegistry {
     }
 
     /// Get cache statistics
+    #[allow(dead_code)]
     pub fn cache_stats(&self) -> super::cache::CacheStats {
         self.cache.stats()
     }
 
     /// Clear all cached results
+    #[allow(dead_code)]
     pub fn clear_cache(&self) {
         self.cache.clear();
     }

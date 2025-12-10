@@ -40,6 +40,7 @@ pub struct TokenUsageLog {
 }
 
 pub struct JsonlLogger {
+    #[allow(dead_code)]
     project_name: String,
     log_dir: PathBuf,
     current_log_file: Option<PathBuf>,
@@ -67,11 +68,13 @@ impl JsonlLogger {
     }
 
     /// Get the project name
+    #[allow(dead_code)]
     pub fn project_name(&self) -> &str {
         &self.project_name
     }
 
     /// List all JSONL log files for this project
+    #[allow(dead_code)]
     pub fn list_log_files(&self) -> std::io::Result<Vec<PathBuf>> {
         let mut files = Vec::new();
 

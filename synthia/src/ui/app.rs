@@ -1,5 +1,6 @@
 use crate::agent::messages::{Command, UIUpdate};
 use crate::context_manager::TokenStats;
+use crate::ui::colors::PastelColors;
 use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyModifiers},
@@ -89,7 +90,6 @@ fn wrap_single_line(text: &str, width: usize) -> String {
                     wrapped.push_str(&current_line);
                     wrapped.push('\n');
                     current_line.clear();
-                    current_width = 0;
                 }
 
                 current_line.push_str(&chunk);
@@ -240,7 +240,7 @@ fn render_markdown_line(stdout: &mut impl Write, line: &str) -> io::Result<()> {
                 if !code_text.is_empty() {
                     queue!(
                         stdout,
-                        SetForegroundColor(Color::Yellow),
+                        SetForegroundColor(PastelColors::TOOL),
                         Print(&code_text),
                         ResetColor
                     )?;
@@ -264,8 +264,11 @@ fn render_markdown_line(stdout: &mut impl Write, line: &str) -> io::Result<()> {
 #[derive(Debug)]
 struct EditApprovalState {
     file_path: String,
+    #[allow(dead_code)]
     old_string: String,
+    #[allow(dead_code)]
     new_string: String,
+    #[allow(dead_code)]
     diff: String,
     response_tx: tokio::sync::oneshot::Sender<crate::agent::messages::ApprovalResponse>,
 }
@@ -306,6 +309,7 @@ pub struct App {
     token_stats: Option<TokenStats>, // NEW: Token usage stats for header display
     show_log_viewer: bool,          // NEW: JSONL log viewer modal flag
     log_entries: Vec<String>,       // NEW: Log entries to display
+    #[allow(dead_code)]
     log_viewer_selected: usize,     // NEW: Selected log entry index
     last_key_time: Option<std::time::Instant>, // Paste detection: track last key time
     is_pasting: bool,               // Paste detection: true when rapid key events detected
@@ -426,7 +430,7 @@ impl App {
     fn print_header(&self, stdout: &mut impl Write) -> io::Result<()> {
         queue!(
             stdout,
-            SetForegroundColor(Color::Blue),
+            SetForegroundColor(PastelColors::HEADER),
             Print("╔════════════════════════════════════════════════════════════════╗\r\n"),
             Print("║  Synthia v0.1.0                                                ║\r\n"),
         )?;
@@ -474,7 +478,7 @@ impl App {
 
                 execute!(
                     stdout,
-                    SetForegroundColor(Color::Cyan),
+                    SetForegroundColor(PastelColors::ASSISTANT),
                     Print("Synthia: "),
                     ResetColor
                 )?;
@@ -505,7 +509,7 @@ impl App {
                     self.clear_input_line(stdout)?;
                     queue!(
                         stdout,
-                        SetForegroundColor(Color::Cyan),
+                        SetForegroundColor(PastelColors::ASSISTANT),
                         Print("Synthia: "),
                         SetForegroundColor(Color::DarkGrey),
                         Print("Thinking..."),
@@ -532,7 +536,7 @@ impl App {
 
                 queue!(
                     stdout,
-                    SetForegroundColor(Color::Yellow),
+                    SetForegroundColor(PastelColors::TOOL),
                     Print(format!("[Tool: {}] ⏳ Running...\n", name)),
                     ResetColor
                 )?;
@@ -549,10 +553,10 @@ impl App {
                 self.clear_input_line(stdout)?;
 
                 let status_icon = if is_error { "✗" } else { "✓" };
-                let color = if is_error { Color::Red } else { Color::Green };
+                let color = if is_error { PastelColors::ERROR } else { PastelColors::SUCCESS };
 
                 // Write tool header line atomically (no queue/flush mixing)
-                write!(stdout, "{}", SetForegroundColor(Color::Yellow))?;
+                write!(stdout, "{}", SetForegroundColor(PastelColors::TOOL))?;
                 write!(stdout, "[Tool: {}] ", name)?;
                 write!(stdout, "{}", SetForegroundColor(color))?;
                 write!(stdout, "{} ", status_icon)?;
@@ -605,7 +609,7 @@ impl App {
 
                 queue!(
                     stdout,
-                    SetForegroundColor(Color::Red),
+                    SetForegroundColor(PastelColors::ERROR),
                     Print(format!("Error: {}\n", err)),
                     ResetColor
                 )?;
@@ -630,7 +634,7 @@ impl App {
                     // Print line-by-line to ensure proper carriage returns
                     execute!(
                         stdout,
-                        SetForegroundColor(Color::Cyan),
+                        SetForegroundColor(PastelColors::ASSISTANT),
                         Print("Synthia: "),
                         ResetColor
                     )?;
@@ -650,9 +654,9 @@ impl App {
                 // Display token usage stats after turn completes
                 if let Some(stats) = &self.token_stats {
                     let color = if stats.current >= stats.threshold {
-                        Color::Red
+                        PastelColors::ERROR
                     } else if stats.usage_percent > 60.0 {
-                        Color::Yellow
+                        PastelColors::TOOL
                     } else {
                         Color::DarkGrey
                     };
@@ -673,7 +677,7 @@ impl App {
 
                 queue!(
                     stdout,
-                    SetForegroundColor(Color::Yellow),
+                    SetForegroundColor(PastelColors::TOOL),
                     Print(format!("[Session saved: {}]\n", &session_id[..session_id.len().min(20)])),
                     ResetColor
                 )?;
@@ -722,7 +726,7 @@ impl App {
             }
             UIUpdate::SystemMessage(msg) => {
                 self.clear_input_line(stdout)?;
-                print_colored_line(stdout, &format!("[System] {}", msg), Color::Yellow)?;
+                print_colored_line(stdout, &format!("[System] {}", msg), PastelColors::TOOL)?;
                 stdout.flush()?;
                 self.input_needs_render = true;
             }
@@ -761,7 +765,7 @@ impl App {
                 // Format as informational message
                 queue!(
                     stdout,
-                    SetForegroundColor(Color::Green),
+                    SetForegroundColor(PastelColors::SUCCESS),
                     Print(format!("✓ Auto-approved: {} for {}\r\n", tool_name, file_path)),
                     ResetColor,
                     SetForegroundColor(Color::DarkGrey),
@@ -771,9 +775,9 @@ impl App {
                 // Show diff with proper formatting
                 for line in diff.lines() {
                     let color = if line.starts_with('+') {
-                        Color::Green
+                        PastelColors::SUCCESS
                     } else if line.starts_with('-') {
-                        Color::Red
+                        PastelColors::ERROR
                     } else {
                         Color::DarkGrey
                     };
@@ -812,30 +816,30 @@ impl App {
 
         self.is_rendering_input = true;
 
-        // Clear the current input line first
-        execute!(
-            stdout,
-            Print("\r"),
-            Clear(ClearType::CurrentLine)
-        )?;
-
-        // Get current Y position after clearing
-        let (_, cursor_y) = cursor::position()?;
-
         let (term_width, _) = size()?;
         let prompt_len = 5; // "You: "
 
         // Split input into lines by actual newlines
         let lines: Vec<&str> = self.input.split('\n').collect();
 
-        // Print prompt and first line
-        queue!(
+        // Get current cursor position and move to start of line
+        let (_, cursor_y) = cursor::position()?;
+
+        // Clear everything from current position to end of screen
+        // This is more robust than trying to calculate exact line count
+        execute!(
             stdout,
-            SetForegroundColor(Color::Green),
+            cursor::MoveTo(0, cursor_y),
+            Clear(ClearType::FromCursorDown),
+            SetForegroundColor(PastelColors::SUCCESS),
             Print("You: "),
-            ResetColor,
-            Print(lines[0]),
+            ResetColor
         )?;
+
+        // Now queue the input text
+
+        // Print first line
+        queue!(stdout, Print(lines[0]))?;
 
         // Print remaining lines (if any)
         for line in &lines[1..] {
@@ -910,7 +914,7 @@ impl App {
                 .unwrap_or_else(|| "Unknown".to_string());
 
             if idx == self.session_list_selected {
-                write!(stdout, "{}", SetForegroundColor(Color::Cyan))?;
+                write!(stdout, "{}", SetForegroundColor(PastelColors::ASSISTANT))?;
             }
 
             // Display session name if available, otherwise just show ID
@@ -939,7 +943,7 @@ impl App {
     fn render_permission_prompt(&self, stdout: &mut impl Write) -> io::Result<()> {
         if let Some(state) = &self.pending_permission_approval {
             // Top border
-            print_colored_line(stdout, "┌─ Permission Required ─────────────────────────────────┐", Color::Yellow)?;
+            print_colored_line(stdout, "┌─ Permission Required ─────────────────────────────────┐", PastelColors::TOOL)?;
 
             // Tool name
             print_line(stdout, &format!("│ Tool: {}", state.tool_name))?;
@@ -969,14 +973,14 @@ impl App {
             queue!(
                 stdout,
                 Print("│ "),
-                SetForegroundColor(Color::Cyan),
+                SetForegroundColor(PastelColors::ASSISTANT),
                 Print("(↑/↓ or 1-3 to select, Enter to confirm, Esc to cancel)"),
                 ResetColor,
             )?;
             print_line(stdout, "")?;
 
             // Bottom border
-            print_colored_line(stdout, "└───────────────────────────────────────────────────────┘", Color::Yellow)?;
+            print_colored_line(stdout, "└───────────────────────────────────────────────────────┘", PastelColors::TOOL)?;
 
             stdout.flush()?;
         }
@@ -985,7 +989,7 @@ impl App {
 
     fn render_edit_approval_prompt(&self, stdout: &mut impl Write, file_path: &str, diff: &str) -> io::Result<()> {
         // Top border
-        print_colored_line(stdout, "┌─ Edit Preview ────────────────────────────────────────┐", Color::Yellow)?;
+        print_colored_line(stdout, "┌─ Edit Preview ────────────────────────────────────────┐", PastelColors::TOOL)?;
 
         // Count changes
         let mut additions = 0;
@@ -1070,10 +1074,10 @@ impl App {
         print_line(stdout, "│")?;
 
         // Accept/Reject prompt
-        print_bordered_line(stdout, "[A]ccept  [D]on't ask for this file  [R]eject", Color::Cyan)?;
+        print_bordered_line(stdout, "[A]ccept  [D]on't ask for this file  [R]eject", PastelColors::ASSISTANT)?;
 
         // Bottom border
-        print_colored_line(stdout, "└───────────────────────────────────────────────────────┘", Color::Yellow)?;
+        print_colored_line(stdout, "└───────────────────────────────────────────────────────┘", PastelColors::TOOL)?;
 
         Ok(())
     }
@@ -1097,7 +1101,7 @@ impl App {
             let selected = if idx == self.menu_selected { ">" } else { " " };
 
             if idx == self.menu_selected {
-                queue!(stdout, SetForegroundColor(Color::Cyan))?;
+                queue!(stdout, SetForegroundColor(PastelColors::ASSISTANT))?;
             }
 
             // Dim "Coming Soon" items
@@ -1145,7 +1149,7 @@ impl App {
             let selected = if idx == self.reasoning_submenu_selected { ">" } else { " " };
 
             if idx == self.reasoning_submenu_selected {
-                queue!(stdout, SetForegroundColor(Color::Cyan))?;
+                queue!(stdout, SetForegroundColor(PastelColors::ASSISTANT))?;
             }
 
             writeln!(stdout, "{} {} - {}", selected, level, desc)?;
@@ -1174,7 +1178,7 @@ impl App {
             let selected = if idx == self.context_submenu_selected { ">" } else { " " };
 
             if idx == self.context_submenu_selected {
-                write!(stdout, "{}", SetForegroundColor(Color::Cyan))?;
+                write!(stdout, "{}", SetForegroundColor(PastelColors::ASSISTANT))?;
             }
 
             write!(stdout, "{} {} - {}\r\n", selected, option, desc)?;
@@ -1237,7 +1241,7 @@ impl App {
 
         queue!(
             stdout,
-            SetForegroundColor(Color::Green),
+            SetForegroundColor(PastelColors::SUCCESS),
             Print("Name: "),
             ResetColor,
             Print(&self.session_name_input),

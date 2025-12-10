@@ -129,6 +129,7 @@ impl AgentActor {
         temp_actor
     }
 
+    #[allow(dead_code)]
     pub fn with_session(
         llm_provider: Arc<dyn LLMProvider>,
         tool_registry: Arc<ToolRegistry>,
@@ -211,10 +212,12 @@ impl AgentActor {
         }
     }
 
+    #[allow(dead_code)]
     pub fn session_id(&self) -> &str {
         &self.session.id
     }
 
+    #[allow(dead_code)]
     pub fn conversation(&self) -> &[Message] {
         &self.conversation
     }

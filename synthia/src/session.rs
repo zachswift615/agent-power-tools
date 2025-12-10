@@ -2,7 +2,7 @@ use crate::types::Message;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
@@ -67,6 +67,7 @@ impl Session {
         Ok(session)
     }
 
+    #[allow(dead_code)]
     pub fn delete(session_id: &str) -> Result<()> {
         let path = get_session_path(session_id)?;
         fs::remove_file(&path)
@@ -136,6 +137,7 @@ pub fn list_sessions() -> Result<Vec<SessionInfo>> {
     Ok(sessions)
 }
 
+#[allow(dead_code)]
 pub fn get_most_recent_session() -> Result<Option<Session>> {
     let sessions = list_sessions()?;
 

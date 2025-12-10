@@ -9,6 +9,7 @@ pub enum Command {
     ListSessions,
     SetSessionName(String),
     SetReasoningLevel(String),
+    #[allow(dead_code)]
     ShowMenu,
     CompactContext,
     ViewContextStats,
@@ -24,6 +25,7 @@ pub enum ApprovalResponse {
 #[derive(Debug)]
 pub enum PermissionResponse {
     Yes,
+    #[allow(dead_code)]
     YesAndDontAsk(String),  // Contains pattern to add
     No,
 }
@@ -33,9 +35,10 @@ pub enum UIUpdate {
     AssistantText(String),
     AssistantTextDelta(String), // For streaming text chunks
     AssistantThinking, // Indicator that agent is thinking
-    ToolExecutionStarted { name: String, id: String },
+    ToolExecutionStarted { name: String, #[allow(dead_code)] id: String },
     ToolResult {
         name: String,
+        #[allow(dead_code)]
         id: String,
         input: serde_json::Value,
         output: String,

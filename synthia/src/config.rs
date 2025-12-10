@@ -307,6 +307,7 @@ impl Config {
 
     /// DEPRECATED: Use global_config_path() or project_config_path()
     #[deprecated(note = "Use global_config_path() or project_config_path() instead")]
+    #[allow(dead_code)]
     fn get_config_paths() -> Vec<PathBuf> {
         let mut paths = Vec::new();
         if let Some(path) = Self::global_config_path() {
@@ -317,6 +318,7 @@ impl Config {
     }
 
     /// Create a default config file at the specified path
+    #[allow(dead_code)]
     pub fn create_default_config<P: AsRef<Path>>(path: P) -> Result<()> {
         let config = Config::default();
         let toml_string = toml::to_string_pretty(&config)
@@ -335,11 +337,13 @@ impl Config {
     }
 
     /// Get the user config directory path (~/.config/synthia)
+    #[allow(dead_code)]
     pub fn user_config_dir() -> Option<PathBuf> {
         dirs::home_dir().map(|home| home.join(".config").join("synthia"))
     }
 
     /// Get the user config file path (~/.config/synthia/config.toml)
+    #[allow(dead_code)]
     pub fn user_config_path() -> Option<PathBuf> {
         Self::user_config_dir().map(|dir| dir.join("config.toml"))
     }
